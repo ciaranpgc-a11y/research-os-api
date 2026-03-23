@@ -1503,7 +1503,8 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1
+      "decimal_places": 1,
+      "severity_label": "elevated"
     },
     "AV regurgitant fraction": {
       "parameter": "AV regurgitant fraction",
@@ -1647,7 +1648,8 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "elevated"
     },
     "PV regurgitant fraction": {
       "parameter": "PV regurgitant fraction",
@@ -1747,7 +1749,8 @@
       "sub_section": "Mitral flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "elevated"
     },
     "MR regurgitant fraction": {
       "parameter": "MR regurgitant fraction",
@@ -1780,7 +1783,8 @@
       "sub_section": "Tricuspid flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0
+      "decimal_places": 0,
+      "severity_label": "elevated"
     },
     "TR regurgitant fraction": {
       "parameter": "TR regurgitant fraction",
