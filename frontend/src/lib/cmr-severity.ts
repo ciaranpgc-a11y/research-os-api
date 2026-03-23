@@ -145,8 +145,8 @@ export function inferSeverityLabel(
   // Forward flow / effective forward flow → elevated (direction-dependent)
   if (key.includes('forward flow')) return 'elevated'
 
-  // Regurgitant volume → regurgitation
-  if (key.includes('volume (per heartbeat)') && (key.startsWith('mr') || key.startsWith('tr'))) return 'regurgitation'
+  // MR/TR volume → elevated (volume alone doesn't determine severity — RF does)
+  if (key.includes('volume (per heartbeat)') && (key.startsWith('mr') || key.startsWith('tr'))) return 'elevated'
 
   // Regurgitant fraction → regurgitation
   if (key.includes('regurgitant fraction')) return 'regurgitation'
