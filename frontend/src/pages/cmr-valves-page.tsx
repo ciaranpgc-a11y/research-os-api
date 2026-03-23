@@ -748,7 +748,6 @@ function MorphologySection({ valve, morphology, onMorphologyChange }: {
 function FlowViz({ values, severity }: { values: Record<string, string>; severity: Severity }) {
   const forward = parseFloat(values.forwardFlow || '')
   const backward = Math.abs(parseFloat(values.backwardFlow || ''))
-  const effective = parseFloat(values.effectiveForwardFlow || '')
   const rf = parseFloat(values.regurgitantFraction || '')
 
   const hasFlow = !isNaN(forward) && forward > 0 && !isNaN(backward)
@@ -756,10 +755,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
 
   if (!hasFlow && !hasRF) return null
 
-  const effectiveVal = !isNaN(effective) ? effective : (hasFlow ? forward - backward : NaN)
   const rfVal = hasRF ? rf : (hasFlow ? (backward / forward) * 100 : NaN)
-  const effectivePct = hasFlow ? ((effectiveVal / forward) * 100) : (hasRF ? 100 - rfVal : NaN)
-  const regurgPct = hasFlow ? ((backward / forward) * 100) : rfVal
 
   // Gauge geometry — semicircle sweeps left→right through the top
   // 0° = left (9 o'clock), 90° = top (12 o'clock), 180° = right (3 o'clock)
@@ -807,7 +803,7 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
     <TooltipProvider delayDuration={0}>
       <div className="flex justify-center">
         <div className="flex flex-col items-center">
-          <svg width="380" height="210" viewBox="20 5 260 150">
+          <svg width="380" height="230" viewBox="20 0 260 175">
             {/* Background track — no grey, severity zones cover the full arc */}
             {/* Severity zone arcs — proportional to RF% range, butt caps */}
             {sevZones.map((z) => {
@@ -866,11 +862,11 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                 </TooltipContent>
               </Tooltip>
             )}
-            {/* Center value */}
-            <text x={CX} y={CY - 16} textAnchor="middle" className="fill-foreground font-bold" style={{ fontSize: '26px' }}>
+            {/* Value and label — below the arc, clear of the gauge */}
+            <text x={CX} y={CY + 20} textAnchor="middle" className="fill-foreground font-bold" style={{ fontSize: '26px' }}>
               {!isNaN(rfVal) ? `${rfVal.toFixed(1)}%` : '—'}
             </text>
-            <text x={CX} y={CY + 4} textAnchor="middle" className="fill-muted-foreground font-medium" style={{ fontSize: '10px' }}>
+            <text x={CX} y={CY + 36} textAnchor="middle" className="fill-muted-foreground font-medium" style={{ fontSize: '10px' }}>
               Regurgitant fraction
             </text>
           </svg>
