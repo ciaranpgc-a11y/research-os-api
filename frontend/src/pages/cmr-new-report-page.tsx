@@ -392,6 +392,7 @@ function RangeChart({
   rangeWidth: number
   previousMarkers?: PrevMarker[]
   severityZones?: SeverityZone[]
+  severityGrade?: SevGrade
 }) {
   const measuredRel = computeMeasuredRel(measured, ll, ul)
   const measuredPos = computeMeasuredPos(measuredRel, rangeStart, rangeWidth)
@@ -534,16 +535,29 @@ function RangeChart({
             </div>
           )
         })}
-        {/* Ring dot marker (current) */}
-        <div
-          className={cn(
-            'absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition-all duration-200',
-            abnormal
-              ? 'border-[hsl(var(--tone-danger-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-danger-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-danger-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-danger-500)/0.2),0_0_8px_hsl(var(--tone-danger-500)/0.3)]'
-              : 'border-[hsl(var(--tone-positive-500))] bg-white shadow-[0_1px_3px_hsl(var(--tone-positive-600)/0.15)] group-hover/chart:bg-[hsl(var(--tone-positive-500))] group-hover/chart:shadow-[0_0_0_3px_hsl(var(--tone-positive-500)/0.2),0_0_8px_hsl(var(--tone-positive-500)/0.3)]',
-          )}
-          style={{ left: dotPct }}
-        />
+        {/* Ring dot marker (current) — colour matches severity grade */}
+        {(() => {
+          const DOT_STYLES: Record<SevGrade, { border: string; hover: string }> = {
+            normal:   { border: 'hsl(158 35% 45%)', hover: 'hsl(158 35% 45%)' },
+            mild:     { border: 'hsl(46 55% 45%)', hover: 'hsl(46 55% 45%)' },
+            moderate: { border: 'hsl(20 50% 45%)', hover: 'hsl(20 50% 45%)' },
+            severe:   { border: 'hsl(4 50% 40%)', hover: 'hsl(4 50% 40%)' },
+          }
+          const grade = severityGrade ?? (abnormal ? 'severe' : 'normal')
+          const ds = DOT_STYLES[grade]
+          return (
+            <div
+              className="absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-white transition-all duration-200 group-hover/chart:shadow-[0_0_0_3px_rgba(0,0,0,0.1),0_0_8px_rgba(0,0,0,0.15)]"
+              style={{
+                left: dotPct,
+                borderColor: ds.border,
+                boxShadow: `0 1px 3px ${ds.border}33`,
+              }}
+              onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = ds.hover }}
+              onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'white' }}
+            />
+          )
+        })()}
       </div>
     </TooltipProvider>
   )
@@ -1421,6 +1435,7 @@ export function CmrNewReportPage() {
                                           }
                                           previousMarkers={getPrevMarkers(p, measured)}
                                           severityZones={buildSeverityZones(p)}
+                                          severityGrade={severity.grade as SevGrade}
                                         />
                                       ) : null}
                                     </td>
@@ -1530,6 +1545,7 @@ export function CmrNewReportPage() {
                                               })()}
                                               previousMarkers={getPrevMarkers(cp, cpMeasured)}
                                               severityZones={buildSeverityZones(cp)}
+                                              severityGrade={cpSeverity.grade as SevGrade}
                                             />
                                           ) : null}
                                         </td>
