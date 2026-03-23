@@ -351,11 +351,15 @@ function formatInterval(fromStr: string, toStr: string): string | null {
 function effectiveUL(param: CmrCanonicalParam): number {
   const t = param.severity_thresholds
   if (!t || param.ul == null) return param.ul ?? 0
-  // Use the highest defined threshold + 20% headroom as the effective UL
+  // Use the highest defined threshold + 15% headroom
   const highest = t.severe ?? t.moderate ?? t.mild ?? param.ul
   if (highest == null) return param.ul
-  return highest * 1.2
+  return highest * 1.15
 }
+
+/** Scaling for severity-zone charts: use 90% of bar width so zones are
+ *  clearly visible and not squeezed into a small strip. */
+const SEV_ZONE_SCALING = { rangeStart: 0.05, rangeWidth: 0.9 } as const
 
 /** Build severity zones from a param's threshold data (if present). */
 function buildSeverityZones(param: CmrCanonicalParam): SeverityZone[] | undefined {
@@ -1394,7 +1398,7 @@ export function CmrNewReportPage() {
                                           direction={p.abnormal_direction}
                                           rangeStart={
                                             p.severity_thresholds
-                                              ? factoryBaseline().rangeStart
+                                              ? SEV_ZONE_SCALING.rangeStart
                                               : (() => {
                                                   const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
                                                   // Fall back to per-measurement if dot would clip
@@ -1406,7 +1410,7 @@ export function CmrNewReportPage() {
                                           }
                                           rangeWidth={
                                             p.severity_thresholds
-                                              ? factoryBaseline().rangeWidth
+                                              ? SEV_ZONE_SCALING.rangeWidth
                                               : (() => {
                                                   const base = rangeParams.get(p.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
                                                   const rel = computeMeasuredRel(measured!, p.ll!, p.ul!)
@@ -1512,13 +1516,13 @@ export function CmrNewReportPage() {
                                               ul={cp.severity_thresholds ? effectiveUL(cp) : cp.ul!}
                                               originalUL={cp.severity_thresholds ? cp.ul! : undefined}
                                               direction={cp.abnormal_direction}
-                                              rangeStart={cp.severity_thresholds ? factoryBaseline().rangeStart : (() => {
+                                              rangeStart={cp.severity_thresholds ? SEV_ZONE_SCALING.rangeStart : (() => {
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
                                                 const rel = computeMeasuredRel(cpMeasured!, cp.ll!, cp.ul!)
                                                 const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
                                                 return (pos >= 0.98 || pos <= 0.02) ? perMeasurementAutoAdjust(rel).rangeStart : base.rangeStart
                                               })()}
-                                              rangeWidth={cp.severity_thresholds ? factoryBaseline().rangeWidth : (() => {
+                                              rangeWidth={cp.severity_thresholds ? SEV_ZONE_SCALING.rangeWidth : (() => {
                                                 const base = rangeParams.get(cp.parameter_key) ?? rangeParams.get('__global__') ?? factoryBaseline()
                                                 const rel = computeMeasuredRel(cpMeasured!, cp.ll!, cp.ul!)
                                                 const pos = computeMeasuredPos(rel, base.rangeStart, base.rangeWidth)
