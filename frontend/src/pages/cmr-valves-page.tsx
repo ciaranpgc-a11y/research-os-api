@@ -746,26 +746,40 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
   const effectivePct = hasFlow ? ((effectiveVal / forward) * 100) : (hasRF ? 100 - rfVal : NaN)
   const regurgPct = hasFlow ? ((backward / forward) * 100) : rfVal
 
-  // Gauge arc: map RF 0–60% to 0–180 degrees (clamped)
-  const gaugeAngle = !isNaN(rfVal) ? Math.min(rfVal / 60, 1) * 180 : 0
-
-  // Severity zone arcs on the gauge (same breakpoints as before)
+  // Severity zones with equal-width arcs (36° each = 180° / 5)
+  // Each zone maps an RF% range to a fixed arc span
   const sevZones = [
-    { label: 'None', lo: 0, hi: 5, color: SEVERITY_COLORS.none },
-    { label: 'Trivial', lo: 5, hi: 10, color: SEVERITY_COLORS.trivial },
-    { label: 'Mild', lo: 10, hi: 20, color: SEVERITY_COLORS.mild },
-    { label: 'Moderate', lo: 20, hi: 40, color: SEVERITY_COLORS.moderate },
-    { label: 'Severe', lo: 40, hi: 60, color: SEVERITY_COLORS.severe },
+    { label: 'None', lo: 0, hi: 5, startDeg: 0, endDeg: 36, color: SEVERITY_COLORS.none },
+    { label: 'Trivial', lo: 5, hi: 10, startDeg: 36, endDeg: 72, color: SEVERITY_COLORS.trivial },
+    { label: 'Mild', lo: 10, hi: 20, startDeg: 72, endDeg: 108, color: SEVERITY_COLORS.mild },
+    { label: 'Moderate', lo: 20, hi: 40, startDeg: 108, endDeg: 144, color: SEVERITY_COLORS.moderate },
+    { label: 'Severe', lo: 40, hi: 100, startDeg: 144, endDeg: 180, color: SEVERITY_COLORS.severe },
   ]
 
-  // SVG arc helper (center 120,120, radius r, from startDeg to endDeg)
+  // Map RF% to gauge angle using the non-linear zone mapping
+  function rfToAngle(rfPct: number): number {
+    const clamped = Math.max(0, rfPct)
+    for (const z of sevZones) {
+      if (clamped <= z.hi) {
+        const frac = (clamped - z.lo) / (z.hi - z.lo)
+        return z.startDeg + frac * (z.endDeg - z.startDeg)
+      }
+    }
+    return 180
+  }
+
+  const gaugeAngle = !isNaN(rfVal) ? rfToAngle(rfVal) : 0
+
+  // SVG arc helper (center cx,cy, radius r, from startDeg to endDeg on a 180° semicircle)
+  const CX = 140
+  const CY = 125
   function arcPath(r: number, startDeg: number, endDeg: number): string {
     const s = (startDeg - 90) * (Math.PI / 180)
     const e = (endDeg - 90) * (Math.PI / 180)
-    const x1 = 120 + r * Math.cos(s)
-    const y1 = 120 + r * Math.sin(s)
-    const x2 = 120 + r * Math.cos(e)
-    const y2 = 120 + r * Math.sin(e)
+    const x1 = CX + r * Math.cos(s)
+    const y1 = CY + r * Math.sin(s)
+    const x2 = CX + r * Math.cos(e)
+    const y2 = CY + r * Math.sin(e)
     const largeArc = endDeg - startDeg > 180 ? 1 : 0
     return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`
   }
@@ -773,42 +787,55 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
   // Needle endpoint
   const needleAngle = (gaugeAngle - 90) * (Math.PI / 180)
   const needleR = 68
-  const nx = 120 + needleR * Math.cos(needleAngle)
-  const ny = 120 + needleR * Math.sin(needleAngle)
+  const nx = CX + needleR * Math.cos(needleAngle)
+  const ny = CY + needleR * Math.sin(needleAngle)
 
   return (
     <TooltipProvider delayDuration={0}>
       <div className="flex items-start gap-6">
         {/* ── RF Gauge ── */}
         <div className="flex flex-col items-center">
-          <svg width="240" height="140" viewBox="0 0 240 140">
+          <svg width="280" height="155" viewBox="0 0 280 155">
             {/* Background track */}
-            <path d={arcPath(85, 0, 180)} fill="none" stroke="hsl(0 0% 90%)" strokeWidth="22" strokeLinecap="round" />
-            {/* Severity zones */}
+            <path d={arcPath(85, 0, 180)} fill="none" stroke="hsl(0 0% 90%)" strokeWidth="24" strokeLinecap="round" />
+            {/* Severity zone arcs — equal angular width */}
             {sevZones.map((z) => {
-              const startAngle = (z.lo / 60) * 180
-              const endAngle = Math.min(z.hi / 60, 1) * 180
-              const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < (z.hi === 60 ? Infinity : z.hi)
+              const isActive = !isNaN(rfVal) && rfVal >= z.lo && rfVal < z.hi
               return (
                 <path
                   key={z.label}
-                  d={arcPath(85, startAngle, endAngle)}
+                  d={arcPath(85, z.startDeg, z.endDeg)}
                   fill="none"
                   stroke={z.color}
-                  strokeWidth="22"
+                  strokeWidth="24"
                   strokeLinecap="butt"
-                  opacity={isActive || isNaN(rfVal) ? 1 : 0.35}
+                  opacity={isActive || isNaN(rfVal) ? 1 : 0.3}
                   className="transition-opacity duration-300"
                 />
               )
             })}
-            {/* Zone labels */}
+            {/* Gap lines between zones */}
+            {sevZones.slice(1).map((z) => {
+              const a = (z.startDeg - 90) * (Math.PI / 180)
+              return (
+                <line
+                  key={`gap-${z.label}`}
+                  x1={CX + 73 * Math.cos(a)}
+                  y1={CY + 73 * Math.sin(a)}
+                  x2={CX + 97 * Math.cos(a)}
+                  y2={CY + 97 * Math.sin(a)}
+                  stroke="white"
+                  strokeWidth="2"
+                />
+              )
+            })}
+            {/* Zone labels outside the arc */}
             {sevZones.map((z) => {
-              const midAngle = ((z.lo + z.hi) / 2 / 60) * 180
-              const labelR = 110
-              const a = (midAngle - 90) * (Math.PI / 180)
-              const lx = 120 + labelR * Math.cos(a)
-              const ly = 120 + labelR * Math.sin(a)
+              const midDeg = (z.startDeg + z.endDeg) / 2
+              const labelR = 112
+              const a = (midDeg - 90) * (Math.PI / 180)
+              const lx = CX + labelR * Math.cos(a)
+              const ly = CY + labelR * Math.sin(a)
               return (
                 <text
                   key={z.label}
@@ -816,7 +843,8 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
                   y={ly}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="fill-muted-foreground text-[8px] font-medium"
+                  className="fill-muted-foreground font-medium"
+                  style={{ fontSize: '9px' }}
                 >
                   {z.label}
                 </text>
@@ -825,15 +853,15 @@ function FlowViz({ values, severity }: { values: Record<string, string>; severit
             {/* Needle */}
             {!isNaN(rfVal) && (
               <>
-                <line x1={120} y1={120} x2={nx} y2={ny} stroke="hsl(0 0% 20%)" strokeWidth="2.5" strokeLinecap="round" />
-                <circle cx={120} cy={120} r="5" fill="hsl(0 0% 20%)" />
+                <line x1={CX} y1={CY} x2={nx} y2={ny} stroke="hsl(0 0% 20%)" strokeWidth="2.5" strokeLinecap="round" />
+                <circle cx={CX} cy={CY} r="5" fill="hsl(0 0% 20%)" />
               </>
             )}
             {/* Center value */}
-            <text x={120} y={105} textAnchor="middle" className="fill-foreground text-xl font-bold" style={{ fontSize: '22px' }}>
+            <text x={CX} y={CY - 18} textAnchor="middle" className="fill-foreground font-bold" style={{ fontSize: '24px' }}>
               {!isNaN(rfVal) ? `${rfVal.toFixed(1)}%` : '—'}
             </text>
-            <text x={120} y={130} textAnchor="middle" className="fill-muted-foreground text-[9px] font-medium">
+            <text x={CX} y={CY + 2} textAnchor="middle" className="fill-muted-foreground font-medium" style={{ fontSize: '9px' }}>
               Regurgitant fraction
             </text>
           </svg>
