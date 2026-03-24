@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
@@ -615,7 +615,6 @@ export function CmrLgePage() {
           label: string; value: number | undefined; unit: string; dp: number; derived?: boolean
           ll?: number; ul?: number; dir?: 'high' | 'low' | 'both'
           ref?: string // reference range text e.g. "950–1050"
-          icon?: 'T1' | 'T2' | 'ECV' | 'T2star'
         }
 
         // Severity: normal / mildly abnormal / significantly abnormal
@@ -646,43 +645,6 @@ export function CmrLgePage() {
           const col = s === 'normal' ? 'bg-emerald-500' : s === 'mild' ? 'bg-amber-500' : s === 'significant' ? 'bg-red-500' : 'bg-gray-300'
           return <span className={cn('inline-block h-2 w-2 rounded-full shrink-0', col)} />
         }
-
-        // Metric icons — small SVGs
-        const metricIcon = (icon?: Metric['icon']) => {
-          if (!icon) return null
-          const cls = 'h-4 w-4 text-muted-foreground/50'
-          switch (icon) {
-            case 'T1': return (
-              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v20M8 2h8" />{/* Magnet / T shape */}
-              </svg>
-            )
-            case 'T2': return (
-              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 4a5 5 0 0 1 10 0c0 3-4 5-4 8h-2c0-3-4-5-4-8Z" />{/* Droplet */}
-                <circle cx="12" cy="17" r="1.5" fill="currentColor" />
-              </svg>
-            )
-            case 'ECV': return (
-              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="3" />
-                <path d="M3 12h18M12 3v18" />{/* Grid = extracellular matrix */}
-              </svg>
-            )
-            case 'T2star': return (
-              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" />{/* Star for T2* */}
-              </svg>
-            )
-            default: return null
-          }
-        }
-        // BP combined: abnormal if either SBP or DBP out of range
-        const bpAbnormal = (
-          (m.sbp !== undefined && (m.sbp < 90 || m.sbp > 140)) ||
-          (m.dbp !== undefined && (m.dbp < 60 || m.dbp > 90))
-        )
-        const bpHasRange = m.sbp !== undefined || m.dbp !== undefined
 
         type MetricWithKey = Metric & { key: string }
         type MetricRow = { label: string; metrics: MetricWithKey[] }
@@ -716,23 +678,8 @@ export function CmrLgePage() {
             { key: 'mrap', label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true, ul: 8, dir: 'high' as const },
           ] as MetricWithKey[]).filter((mt) => mt.value !== undefined),
         }
-        const rows = [tissueRow, structRow, haemoRow].filter((r) => r.metrics.length > 0)
-
-        // Subtle background tint: normal=green, abnormal=red
-        const tint = (mt: Metric): string => {
-          const v = mt.value
-          if (v === undefined) return 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
-          const lo = mt.ll, hi = mt.ul, d = mt.dir
-          const isLow = lo !== undefined && v < lo && (d === 'low' || d === 'both')
-          const isHigh = hi !== undefined && v > hi && (d === 'high' || d === 'both')
-          if (isLow || isHigh) return 'bg-[hsl(4_55%_95%)] border-[hsl(4_40%_80%)]'
-          if (lo !== undefined || hi !== undefined) return 'bg-[hsl(158_30%_95%)] border-[hsl(158_25%_82%)]'
-          return 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
-        }
-
-        const bpTint = bpAbnormal
-          ? 'bg-[hsl(4_55%_95%)] border-[hsl(4_40%_80%)]'
-          : bpHasRange ? 'bg-[hsl(158_30%_95%)] border-[hsl(158_25%_82%)]' : 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
+        // Combine all rows for rendering (only tissue is shown currently)
+        void structRow; void haemoRow  // reserved for future layout expansion
 
         const calcIcon = (
           <svg className="h-2.5 w-2.5 text-muted-foreground/40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -743,9 +690,6 @@ export function CmrLgePage() {
             <line x1="5" y1="13" x2="11" y2="13" />
           </svg>
         )
-
-        // Add BP card if either value available
-        const hasBp = m.sbp !== undefined || m.dbp !== undefined
 
         const renderCard = (mt: Metric & { key: string }) => {
           const s = severity(mt)
