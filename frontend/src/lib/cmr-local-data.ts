@@ -43,6 +43,8 @@ type RawOutputParam = {
   decimal_places?: number
   separator_before?: boolean
   abnormal_direction?: string
+  derived?: boolean
+  derived_tooltip?: string
 }
 
 type RawRefRange = {
@@ -225,6 +227,8 @@ export function resolveReferenceParameters(sex: string = 'Male', age?: number): 
       nested_under: op.nested_under,
       decimal_places: op.decimal_places,
       separator_before: op.separator_before,
+      derived: op.derived,
+      derived_tooltip: op.derived_tooltip,
     })
   }
 

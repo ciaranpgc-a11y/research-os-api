@@ -37,6 +37,7 @@ type FlowFieldDef = {
   unit: string
   column: 1 | 2  // 1 = left (flow volumes), 2 = right (gradients/velocity)
   paramKey: Record<ValveId, string | null>  // canonical parameter key per valve, null if N/A
+  dp: number  // decimal places for display (matches cmr_reference_data.json)
 }
 
 const FLOW_FIELDS: FlowFieldDef[] = [
@@ -46,6 +47,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Forward flow',
     unit: 'mL/beat',
     column: 1,
+    dp: 0,
     paramKey: {
       aortic: 'AV forward flow (per heartbeat)',
       pulmonary: 'PV forward flow (per heartbeat)',
@@ -58,6 +60,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Backward flow',
     unit: 'mL/beat',
     column: 1,
+    dp: 0,
     paramKey: {
       aortic: 'AV backward flow (per heartbeat)',
       pulmonary: 'PV backward flow (per heartbeat)',
@@ -70,6 +73,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Effective forward flow',
     unit: 'mL/beat',
     column: 1,
+    dp: 0,
     paramKey: {
       aortic: 'AV effective forward flow (per heartbeat)',
       pulmonary: 'PV effective forward flow (per heartbeat)',
@@ -82,6 +86,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Regurgitant fraction',
     unit: '%',
     column: 1,
+    dp: 1,
     paramKey: {
       aortic: 'AV regurgitant fraction',
       pulmonary: 'PV regurgitant fraction',
@@ -94,6 +99,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Regurgitant volume',
     unit: 'mL',
     column: 1,
+    dp: 0,
     paramKey: {
       aortic: null,                        // same as backward flow for AV — removed
       pulmonary: null,                     // same as backward flow for PV — removed
@@ -107,6 +113,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Max pressure gradient',
     unit: 'mmHg',
     column: 2,
+    dp: 1,
     paramKey: {
       aortic: 'AV maximum pressure gradient',
       pulmonary: 'PV maximum pressure gradient',
@@ -119,6 +126,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Mean pressure gradient',
     unit: 'mmHg',
     column: 2,
+    dp: 1,
     paramKey: {
       aortic: 'AV mean pressure gradient',
       pulmonary: 'PV mean pressure gradient',
@@ -131,6 +139,7 @@ const FLOW_FIELDS: FlowFieldDef[] = [
     label: 'Peak velocity',
     unit: 'm/s',
     column: 2,
+    dp: 1,
     paramKey: {
       aortic: 'AV maximum velocity',
       pulmonary: 'PV maximum velocity',
@@ -873,11 +882,10 @@ function FlowViz({ values }: { values: Record<string, string> }) {
 // Flow detail panel
 // ---------------------------------------------------------------------------
 
-function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, manualSeverity, morphology, onMorphologyChange }: {
+function FlowPanel({ valve, values, derivedKeys, autoSeverity, manualSeverity, morphology, onMorphologyChange }: {
   valve: ValveInfo
   values: Record<string, string>
   derivedKeys: Set<string>
-  onValueChange: (fieldKey: string, value: string) => void
   autoSeverity: Severity | null
   manualSeverity: Severity | null
   morphology: ValveMorphology
@@ -913,6 +921,7 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
             <div className="flex-1 min-w-0 flex flex-col gap-4">
               {relevantFields.filter((f) => f.column === 1).map((field) => {
                 const paramKey = field.paramKey[valve.id]!
+                const displayVal = values[field.key]
                 return (
                   <div key={field.key} className="flex items-center gap-2">
                     <label className="text-xs font-medium text-muted-foreground w-40 shrink-0 flex items-center" title={paramKey}>
@@ -920,14 +929,9 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
                       {derivedKeys.has(field.key) && <CalculatorIcon />}
                     </label>
                     <div className="flex items-center gap-1.5 flex-1">
-                      <input
-                        type="number"
-                        step="any"
-                        value={values[field.key] ?? ''}
-                        onChange={(e) => onValueChange(field.key, e.target.value)}
-                        placeholder="—"
-                        className="h-8 w-20 rounded-md border border-border/50 bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/20"
-                      />
+                      <span className="h-8 w-20 flex items-center px-2.5 text-xs tabular-nums text-foreground">
+                        {displayVal || '—'}
+                      </span>
                       <span className="text-xs text-muted-foreground">{field.unit}</span>
                     </div>
                   </div>
@@ -938,6 +942,7 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
             <div className="flex-1 min-w-0 flex flex-col gap-4">
               {relevantFields.filter((f) => f.column === 2).map((field) => {
                 const paramKey = field.paramKey[valve.id]!
+                const displayVal = values[field.key]
                 return (
                   <div key={field.key} className="flex items-center gap-2">
                     <label className="text-xs font-medium text-muted-foreground w-40 shrink-0 flex items-center" title={paramKey}>
@@ -945,14 +950,9 @@ function FlowPanel({ valve, values, derivedKeys, onValueChange, autoSeverity, ma
                       {derivedKeys.has(field.key) && <CalculatorIcon />}
                     </label>
                     <div className="flex items-center gap-1.5 flex-1">
-                      <input
-                        type="number"
-                        step="any"
-                        value={values[field.key] ?? ''}
-                        onChange={(e) => onValueChange(field.key, e.target.value)}
-                        placeholder="—"
-                        className="h-8 w-20 rounded-md border border-border/50 bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-foreground/20"
-                      />
+                      <span className="h-8 w-20 flex items-center px-2.5 text-xs tabular-nums text-foreground">
+                        {displayVal || '—'}
+                      </span>
                       <span className="text-xs text-muted-foreground">{field.unit}</span>
                     </div>
                   </div>
@@ -1023,14 +1023,6 @@ export function CmrValvesPage() {
     return derived
   }, [extractedValues])
 
-  // Local overrides per valve (user-edited values take precedence over extracted)
-  const [overrides, setOverrides] = useState<Record<ValveId, Record<string, string>>>({
-    mitral: {},
-    aortic: {},
-    tricuspid: {},
-    pulmonary: {},
-  })
-
   // Manual severity overrides per valve (null = use auto)
   const [manualSeverity] = useState<Record<ValveId, Severity | null>>({
     mitral: null,
@@ -1058,30 +1050,20 @@ export function CmrValvesPage() {
     const derivedKeys = new Set<string>()
     for (const field of FLOW_FIELDS) {
       const paramKey = field.paramKey[valveId]
-      // Check override first
-      if (overrides[valveId][field.key] !== undefined && overrides[valveId][field.key] !== '') {
-        values[field.key] = overrides[valveId][field.key]
-      } else if (paramKey && extractedValues.has(paramKey)) {
+      if (paramKey && extractedValues.has(paramKey)) {
         let val = extractedValues.get(paramKey)!
         // Backward flow & regurgitant volume: strip sign — the label already implies direction
         if (field.key === 'backwardFlow' || field.key === 'regurgitantVolume') val = Math.abs(val)
-        values[field.key] = String(val)
+        values[field.key] = val.toFixed(field.dp)
       } else if (paramKey && derivedValues.has(paramKey)) {
-        values[field.key] = String(derivedValues.get(paramKey)!)
+        values[field.key] = derivedValues.get(paramKey)!.toFixed(field.dp)
         derivedKeys.add(field.key)
       } else {
         values[field.key] = ''
       }
     }
     return { values, derivedKeys }
-  }, [overrides, extractedValues, derivedValues])
-
-  const handleValueChange = useCallback((valveId: ValveId, fieldKey: string, value: string) => {
-    setOverrides((prev) => ({
-      ...prev,
-      [valveId]: { ...prev[valveId], [fieldKey]: value },
-    }))
-  }, [])
+  }, [extractedValues, derivedValues])
 
   // Compute auto severity for each valve
   const autoSeverities = useMemo(() => {
@@ -1123,7 +1105,6 @@ export function CmrValvesPage() {
             valve={selectedInfo}
             values={values}
             derivedKeys={derivedKeys}
-            onValueChange={(fieldKey, value) => handleValueChange(selectedValve, fieldKey, value)}
             autoSeverity={autoSeverities[selectedValve]}
             manualSeverity={manualSeverity[selectedValve]}
             morphology={morphologies[selectedValve]}

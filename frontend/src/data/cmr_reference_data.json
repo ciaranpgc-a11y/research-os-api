@@ -1165,7 +1165,7 @@
         "Roy et al. JCMR 2017;19:72"
       ],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "separator_before": true,
       "abnormal_direction": "high",
       "sort_order": 3
@@ -1402,7 +1402,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "MPA diastolic diameter": {
@@ -1413,7 +1413,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "MPA systolic area": {
@@ -1446,7 +1446,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "low"
     },
     "RPA systolic diameter": {
@@ -1457,7 +1457,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "separator_before": true,
       "abnormal_direction": "high"
     },
@@ -1469,7 +1469,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "RPA systolic area": {
@@ -1502,7 +1502,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "low"
     },
     "LPA systolic diameter": {
@@ -1513,7 +1513,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "separator_before": true,
       "abnormal_direction": "high"
     },
@@ -1525,7 +1525,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "LPA systolic area": {
@@ -1558,7 +1558,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "low"
     },
     "Asc aorta distensibility": {
@@ -1602,7 +1602,7 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "both"
     },
     "AV forward flow (per minute)": {
@@ -1651,7 +1651,7 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "severity_label": "elevated",
       "abnormal_direction": "high"
     },
@@ -1737,7 +1737,7 @@
       "sub_section": "Aortic flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0,
+      "decimal_places": 1,
       "severity_label": "stenosis",
       "severity_thresholds": {
         "mild": 20,
@@ -1817,7 +1817,7 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0,
+      "decimal_places": 1,
       "severity_label": "regurgitation",
       "severity_thresholds": {
         "mild": 20,
@@ -1889,7 +1889,7 @@
       "sub_section": "Pulmonary flow",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 0,
+      "decimal_places": 1,
       "severity_label": "stenosis",
       "severity_thresholds": {
         "mild": 20,
@@ -1925,7 +1925,7 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 0,
+      "decimal_places": 1,
       "severity_label": "regurgitation",
       "severity_thresholds": {
         "mild": 20,
@@ -1961,7 +1961,7 @@
         "SCMR Reference Values 2025 Update. JCMR 2025"
       ],
       "pap_affected": false,
-      "decimal_places": 0,
+      "decimal_places": 1,
       "severity_label": "regurgitation",
       "severity_thresholds": {
         "mild": 20,
@@ -1982,11 +1982,78 @@
       "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
       "sub_section": null,
       "sources": [
-        "SCMR Reference Values 2025 Update. JCMR 2025"
+        "Garg et al. Eur Heart J Open 2024;4:oeae038"
+      ],
+      "pap_affected": false,
+      "decimal_places": 1,
+      "abnormal_direction": "high",
+      "derived": true,
+      "derived_equation": "5.7591 + (0.07505 × LAV) + (0.05289 × LVM) − (1.9927 × Sex)",
+      "derived_tooltip": "Estimated from LA volume, LV mass and sex (Garg et al. 2024)"
+    },
+    "mRAP": {
+      "parameter": "mRAP",
+      "unit": "mmHg",
+      "indexing": "None",
+      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
+      "sub_section": null,
+      "sources": [
+        "Newman, Garg et al. Open Heart 2025;12:e003216"
+      ],
+      "pap_affected": false,
+      "decimal_places": 1,
+      "abnormal_direction": "high",
+      "derived": true,
+      "derived_equation": "6.4547 + (0.05828 × RAESV)",
+      "derived_tooltip": "Estimated from RA end-systolic volume (Newman, Garg et al. 2025)"
+    },
+    "CMR SBP": {
+      "parameter": "CMR SBP",
+      "unit": "mmHg",
+      "indexing": "None",
+      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
+      "sub_section": null,
+      "sources": [
+        "Assadi, Garg et al. Open Heart 2023;10:e002484"
       ],
       "pap_affected": false,
       "decimal_places": 0,
-      "abnormal_direction": "high"
+      "abnormal_direction": "high",
+      "derived": true,
+      "derived_equation": "83.845 + (0.4225 × Age) + (0.4187 × LVEF)",
+      "derived_tooltip": "Estimated from age and LV ejection fraction (Assadi, Garg et al. 2023)"
+    },
+    "CMR DBP": {
+      "parameter": "CMR DBP",
+      "unit": "mmHg",
+      "indexing": "None",
+      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
+      "sub_section": null,
+      "sources": [
+        "Assadi, Garg et al. Open Heart 2023;10:e002484"
+      ],
+      "pap_affected": false,
+      "decimal_places": 0,
+      "abnormal_direction": "high",
+      "derived": true,
+      "derived_equation": "58.8591 + (−0.1229 × AO fwd flow) + (8.2279 × BSA) + (0.1738 × LVMi)",
+      "derived_tooltip": "Estimated from aortic forward flow, BSA and LV mass index (Assadi, Garg et al. 2023)"
+    },
+    "iSvO₂": {
+      "parameter": "iSvO₂",
+      "unit": "%",
+      "indexing": "None",
+      "major_section": "DERIVED HAEMODYNAMIC PARAMETERS",
+      "sub_section": null,
+      "sources": [
+        "McDiarmid, Garg et al. JACC Adv 2026;5:102484"
+      ],
+      "pap_affected": false,
+      "decimal_places": 1,
+      "abnormal_direction": "low",
+      "derived": true,
+      "derived_equation": "95 × (RV blood pool T2 / LV blood pool T2)",
+      "derived_tooltip": "Estimated from RV and LV blood pool T2 mapping (McDiarmid, Garg et al. 2026)"
     }
   },
   "ref_ranges": [
@@ -18531,6 +18598,114 @@
       "mean_mass": null,
       "ul_mass": null,
       "sd_mass": null
+    },
+    {
+      "unit": "mmHg",
+      "indexing": "None",
+      "age_band": "Adult",
+      "age_min": null,
+      "age_max": null,
+      "ll_mass": null,
+      "mean_mass": null,
+      "ul_mass": null,
+      "sd_mass": null,
+      "parameter": "mRAP",
+      "sex": "Male",
+      "ll": 1,
+      "mean": 5,
+      "ul": 8,
+      "sd": 2,
+      "abnormal_direction": "high"
+    },
+    {
+      "unit": "mmHg",
+      "indexing": "None",
+      "age_band": "Adult",
+      "age_min": null,
+      "age_max": null,
+      "ll_mass": null,
+      "mean_mass": null,
+      "ul_mass": null,
+      "sd_mass": null,
+      "parameter": "mRAP",
+      "sex": "Female",
+      "ll": 1,
+      "mean": 5,
+      "ul": 8,
+      "sd": 2,
+      "abnormal_direction": "high"
+    },
+    {
+      "unit": "mmHg",
+      "indexing": "None",
+      "age_band": "Adult",
+      "age_min": null,
+      "age_max": null,
+      "ll_mass": null,
+      "mean_mass": null,
+      "ul_mass": null,
+      "sd_mass": null,
+      "parameter": "CMR SBP",
+      "sex": "Male",
+      "ll": 90,
+      "mean": 120,
+      "ul": 140,
+      "sd": 15,
+      "abnormal_direction": "both"
+    },
+    {
+      "unit": "mmHg",
+      "indexing": "None",
+      "age_band": "Adult",
+      "age_min": null,
+      "age_max": null,
+      "ll_mass": null,
+      "mean_mass": null,
+      "ul_mass": null,
+      "sd_mass": null,
+      "parameter": "CMR SBP",
+      "sex": "Female",
+      "ll": 90,
+      "mean": 120,
+      "ul": 140,
+      "sd": 15,
+      "abnormal_direction": "both"
+    },
+    {
+      "unit": "mmHg",
+      "indexing": "None",
+      "age_band": "Adult",
+      "age_min": null,
+      "age_max": null,
+      "ll_mass": null,
+      "mean_mass": null,
+      "ul_mass": null,
+      "sd_mass": null,
+      "parameter": "CMR DBP",
+      "sex": "Male",
+      "ll": 60,
+      "mean": 75,
+      "ul": 90,
+      "sd": 10,
+      "abnormal_direction": "both"
+    },
+    {
+      "unit": "mmHg",
+      "indexing": "None",
+      "age_band": "Adult",
+      "age_min": null,
+      "age_max": null,
+      "ll_mass": null,
+      "mean_mass": null,
+      "ul_mass": null,
+      "sd_mass": null,
+      "parameter": "CMR DBP",
+      "sex": "Female",
+      "ll": 60,
+      "mean": 75,
+      "ul": 90,
+      "sd": 10,
+      "abnormal_direction": "both"
     },
     {
       "parameter": "MR volume (per heartbeat)",

@@ -43,6 +43,9 @@ export type CmrCanonicalParam = {
   decimal_places?: number
   // Visual separator: when true, render a thicker border above this row
   separator_before?: boolean
+  // Derived (calculated) parameter — show calculator icon with tooltip
+  derived?: boolean
+  derived_tooltip?: string
 }
 
 export type CmrCanonicalTableResponse = {

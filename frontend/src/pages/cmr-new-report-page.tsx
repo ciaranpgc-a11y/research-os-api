@@ -846,7 +846,23 @@ export function CmrNewReportPage() {
     return map
   }, [extraction])
 
-  // Derived (calculated) values — indirect volumetric method
+  const sex = extraction?.demographics?.sex ?? 'Male'
+  const age = extraction?.demographics?.age ?? undefined
+  const heartRate = extraction?.demographics?.heart_rate ?? undefined
+  const bsa = (() => {
+    const h = extraction?.demographics?.height_cm
+    const w = extraction?.demographics?.weight_kg
+    if (h && w && h > 0) return Math.sqrt((h * w) / 3600) // Mosteller
+    return undefined
+  })()
+  const bmi = (() => {
+    const h = extraction?.demographics?.height_cm
+    const w = extraction?.demographics?.weight_kg
+    if (h && w && h > 0) return w / ((h / 100) ** 2)
+    return undefined
+  })()
+
+  // Derived (calculated) values — indirect volumetric method + haemodynamic equations
   const derivedValues = useMemo(() => {
     const derived = new Map<string, number>()
     const lvsv = measuredValues.get('LV SV')
@@ -872,17 +888,47 @@ export function CmrNewReportPage() {
       }
     }
 
+    // --- Derived haemodynamic parameters (Garg et al.) ---
+
+    // PCWP = 5.7591 + (0.07505 × LAV) + (0.05289 × LVM) − (1.9927 × Sex)
+    // Sex: 0 = female, 1 = male
+    const lav = measuredValues.get('LA max volume')
+    const lvm = measuredValues.get('LV mass')
+    if (lav !== undefined && lvm !== undefined) {
+      const sexVal = sex === 'Male' ? 1 : 0
+      derived.set('PCWP', 5.7591 + (0.07505 * lav) + (0.05289 * lvm) - (1.9927 * sexVal))
+    }
+
+    // mRAP = 6.4547 + (0.05828 × RAESV)
+    // RA min volume = RA end-systolic volume
+    const raesv = measuredValues.get('RA min volume')
+    if (raesv !== undefined) {
+      derived.set('mRAP', 6.4547 + (0.05828 * raesv))
+    }
+
+    // CMR SBP = 83.845 + (0.4225 × Age) + (0.4187 × LVEF)
+    const lvef = measuredValues.get('LV EF')
+    if (age !== undefined && lvef !== undefined) {
+      derived.set('CMR SBP', 83.845 + (0.4225 * age) + (0.4187 * lvef))
+    }
+
+    // CMR DBP = 58.8591 + (−0.1229 × AO_fwd_flow) + (8.2279 × BSA) + (0.1738 × LVMi)
+    const aoFwd = measuredValues.get('AV forward flow (per heartbeat)')
+    const lvmi = measuredValues.get('LV mass (i)')
+    if (aoFwd !== undefined && bsa !== undefined && lvmi !== undefined) {
+      derived.set('CMR DBP', 58.8591 + (-0.1229 * aoFwd) + (8.2279 * bsa) + (0.1738 * lvmi))
+    }
+
+    // iSvO₂ = 95 × (RV blood pool T2 / LV blood pool T2)
+    // These aren't standard extracted params yet, but support them if present
+    const rvT2 = measuredValues.get('RV blood pool T2')
+    const lvT2 = measuredValues.get('LV blood pool T2')
+    if (rvT2 !== undefined && lvT2 !== undefined && lvT2 > 0) {
+      derived.set('iSvO₂', 95 * (rvT2 / lvT2))
+    }
+
     return derived
-  }, [measuredValues])
-  const sex = extraction?.demographics?.sex ?? 'Male'
-  const age = extraction?.demographics?.age ?? undefined
-  const heartRate = extraction?.demographics?.heart_rate ?? undefined
-  const bmi = (() => {
-    const h = extraction?.demographics?.height_cm
-    const w = extraction?.demographics?.weight_kg
-    if (h && w && h > 0) return w / ((h / 100) ** 2)
-    return undefined
-  })()
+  }, [measuredValues, sex, age, bsa])
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   useEffect(() => {
@@ -1472,8 +1518,8 @@ export function CmrNewReportPage() {
                                   <td className="house-table-cell-text whitespace-nowrap px-3 py-2 font-medium text-[hsl(var(--foreground))]">
                                     {displayName(p.parameter_key)}
                                     {isBsa && <BsaPill />}
-                                    {isDerived && (
-                                      <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title="Calculated from LV/RV stroke volume and forward flow">
+                                    {(isDerived || p.derived) && (
+                                      <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title={p.derived_tooltip ?? 'Calculated from LV/RV stroke volume and forward flow'}>
                                         <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                           <rect x="2" y="1" width="12" height="14" rx="1.5" />
                                           <line x1="2" y1="5" x2="14" y2="5" />
@@ -1623,8 +1669,8 @@ export function CmrNewReportPage() {
                                       <td className="house-table-cell-text whitespace-nowrap px-3 py-2 pl-8 font-medium text-[hsl(var(--foreground))]">
                                         {displayName(cp.parameter_key, true)}
                                         {cpBsa && <BsaPill />}
-                                        {cpIsDerived && (
-                                          <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title="Calculated from LV/RV stroke volume and forward flow">
+                                        {(cpIsDerived || cp.derived) && (
+                                          <span className="ml-1.5 inline-flex items-center text-[hsl(var(--tone-neutral-400))]" title={cp.derived_tooltip ?? 'Calculated from LV/RV stroke volume and forward flow'}>
                                             <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                               <rect x="2" y="1" width="12" height="14" rx="1.5" />
                                               <line x1="2" y1="5" x2="14" y2="5" />
