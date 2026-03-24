@@ -615,38 +615,28 @@ export function CmrLgePage() {
           label: string; value: number | undefined; unit: string; dp: number; derived?: boolean
           ll?: number; ul?: number; dir?: 'high' | 'low' | 'both'
         }
-        const groups: { title: string; metrics: Metric[] }[] = [
-          {
-            title: 'Tissue mapping',
-            metrics: [
-              { label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0, dir: 'both' },
-              { label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0, dir: 'low' },
-              { label: 'ECV', value: m.ecv, unit: '%', dp: 0, ul: 30, dir: 'high' },
-              { label: 'T2*', value: m.t2star, unit: 'ms', dp: 1, ll: 20, dir: 'low' },
-            ],
-          },
-          {
-            title: 'Ventricular function',
-            metrics: [
-              { label: 'LV EF', value: m.lvEf, unit: '%', dp: 1, ll: 55, dir: 'low' },
-              { label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1, ul: 81, dir: 'high' },
-              { label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1, ul: 98, dir: 'high' },
-              { label: 'RV EF', value: m.rvEf, unit: '%', dp: 1, ll: 45, dir: 'low' },
-              { label: 'MR RF', value: m.mrRf, unit: '%', dp: 1, ul: 20, dir: 'high' },
-            ],
-          },
-          {
-            title: 'Derived haemodynamics',
-            metrics: [
-              { label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true, ul: 12, dir: 'high' },
-              { label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true, ul: 8, dir: 'high' },
-              { label: 'SBP', value: m.sbp, unit: 'mmHg', dp: 0, derived: true, ll: 90, ul: 140, dir: 'both' },
-              { label: 'DBP', value: m.dbp, unit: 'mmHg', dp: 0, derived: true, ll: 60, ul: 90, dir: 'both' },
-            ],
-          },
-        ]
+        // BP combined: abnormal if either SBP or DBP out of range
+        const bpAbnormal = (
+          (m.sbp !== undefined && (m.sbp < 90 || m.sbp > 140)) ||
+          (m.dbp !== undefined && (m.dbp < 60 || m.dbp > 90))
+        )
+        const bpHasRange = m.sbp !== undefined || m.dbp !== undefined
 
-        // Subtle background tint: normal=green, abnormal=amber/red
+        const singles: (Metric & { key: string })[] = [
+          { key: 'nT1', label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0, dir: 'both' },
+          { key: 'pcT1', label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0, dir: 'low' },
+          { key: 'ecv', label: 'ECV', value: m.ecv, unit: '%', dp: 0, ul: 30, dir: 'high' },
+          { key: 't2s', label: 'T2*', value: m.t2star, unit: 'ms', dp: 1, ll: 20, dir: 'low' },
+          { key: 'lvef', label: 'LV EF', value: m.lvEf, unit: '%', dp: 1, ll: 55, dir: 'low' },
+          { key: 'lvmi', label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1, ul: 81, dir: 'high' },
+          { key: 'lvedvi', label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1, ul: 98, dir: 'high' },
+          { key: 'rvef', label: 'RV EF', value: m.rvEf, unit: '%', dp: 1, ll: 45, dir: 'low' },
+          { key: 'mrrf', label: 'MR RF', value: m.mrRf, unit: '%', dp: 1, ul: 20, dir: 'high' },
+          { key: 'pcwp', label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true, ul: 12, dir: 'high' },
+          { key: 'mrap', label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true, ul: 8, dir: 'high' },
+        ].filter((mt) => mt.value !== undefined)
+
+        // Subtle background tint: normal=green, abnormal=red
         const tint = (mt: Metric): string => {
           const v = mt.value
           if (v === undefined) return 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
@@ -658,27 +648,33 @@ export function CmrLgePage() {
           return 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
         }
 
-        const allMetrics = groups.flatMap((g) =>
-          g.metrics.filter((mt) => mt.value !== undefined).map((mt) => ({ ...mt, group: g.title }))
+        const bpTint = bpAbnormal
+          ? 'bg-[hsl(4_55%_95%)] border-[hsl(4_40%_80%)]'
+          : bpHasRange ? 'bg-[hsl(158_30%_95%)] border-[hsl(158_25%_82%)]' : 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
+
+        const calcIcon = (
+          <svg className="h-2.5 w-2.5 text-muted-foreground/40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="1" width="12" height="14" rx="1.5" />
+            <line x1="2" y1="5" x2="14" y2="5" />
+            <line x1="5" y1="8" x2="11" y2="8" />
+            <line x1="8" y1="5" x2="8" y2="11" />
+            <line x1="5" y1="13" x2="11" y2="13" />
+          </svg>
         )
+
+        // Add BP card if either value available
+        const hasBp = m.sbp !== undefined || m.dbp !== undefined
+
         return (
-          <div className="flex flex-wrap gap-2">
-            {allMetrics.map((mt) => (
+          <div className="grid grid-cols-6 gap-2">
+            {singles.map((mt) => (
               <div
-                key={mt.label}
-                className={cn('flex flex-col items-center rounded-lg border px-3 py-2 min-w-[5.5rem]', tint(mt))}
+                key={mt.key}
+                className={cn('flex flex-col items-center rounded-lg border px-3 py-2', tint(mt))}
               >
                 <span className="text-[0.65rem] font-medium text-muted-foreground/70 flex items-center gap-0.5">
                   {mt.label}
-                  {mt.derived && (
-                    <svg className="h-2.5 w-2.5 text-muted-foreground/40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="1" width="12" height="14" rx="1.5" />
-                      <line x1="2" y1="5" x2="14" y2="5" />
-                      <line x1="5" y1="8" x2="11" y2="8" />
-                      <line x1="8" y1="5" x2="8" y2="11" />
-                      <line x1="5" y1="13" x2="11" y2="13" />
-                    </svg>
-                  )}
+                  {mt.derived && calcIcon}
                 </span>
                 <span className="text-base font-bold tabular-nums text-foreground leading-tight">
                   {mt.value!.toFixed(mt.dp)}
@@ -686,6 +682,17 @@ export function CmrLgePage() {
                 <span className="text-[0.6rem] text-muted-foreground/60">{mt.unit}</span>
               </div>
             ))}
+            {hasBp && (
+              <div className={cn('flex flex-col items-center justify-center rounded-lg border px-3 py-2', bpTint)}>
+                <span className="text-[0.65rem] font-medium text-muted-foreground/70 flex items-center gap-0.5">
+                  BP {calcIcon}
+                </span>
+                <span className="text-base font-bold tabular-nums text-foreground leading-tight">
+                  {m.sbp !== undefined ? Math.round(m.sbp) : '—'}/{m.dbp !== undefined ? Math.round(m.dbp) : '—'}
+                </span>
+                <span className="text-[0.6rem] text-muted-foreground/60">mmHg</span>
+              </div>
+            )}
           </div>
         )
       })()}
