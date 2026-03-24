@@ -611,37 +611,52 @@ export function CmrLgePage() {
           m.pcwp !== undefined || m.mrap !== undefined || m.sbp !== undefined || m.dbp !== undefined
         if (!hasAny) return null
 
-        type Metric = { label: string; value: number | undefined; unit: string; dp: number; derived?: boolean }
+        type Metric = {
+          label: string; value: number | undefined; unit: string; dp: number; derived?: boolean
+          ll?: number; ul?: number; dir?: 'high' | 'low' | 'both'
+        }
         const groups: { title: string; metrics: Metric[] }[] = [
           {
             title: 'Tissue mapping',
             metrics: [
-              { label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0 },
-              { label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0 },
-              { label: 'ECV', value: m.ecv, unit: '%', dp: 0 },
-              { label: 'T2*', value: m.t2star, unit: 'ms', dp: 1 },
+              { label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0, dir: 'both' },
+              { label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0, dir: 'low' },
+              { label: 'ECV', value: m.ecv, unit: '%', dp: 0, ul: 30, dir: 'high' },
+              { label: 'T2*', value: m.t2star, unit: 'ms', dp: 1, ll: 20, dir: 'low' },
             ],
           },
           {
             title: 'Ventricular function',
             metrics: [
-              { label: 'LV EF', value: m.lvEf, unit: '%', dp: 1 },
-              { label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1 },
-              { label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1 },
-              { label: 'RV EF', value: m.rvEf, unit: '%', dp: 1 },
-              { label: 'MR RF', value: m.mrRf, unit: '%', dp: 1 },
+              { label: 'LV EF', value: m.lvEf, unit: '%', dp: 1, ll: 55, dir: 'low' },
+              { label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1, ul: 81, dir: 'high' },
+              { label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1, ul: 98, dir: 'high' },
+              { label: 'RV EF', value: m.rvEf, unit: '%', dp: 1, ll: 45, dir: 'low' },
+              { label: 'MR RF', value: m.mrRf, unit: '%', dp: 1, ul: 20, dir: 'high' },
             ],
           },
           {
             title: 'Derived haemodynamics',
             metrics: [
-              { label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true },
-              { label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true },
-              { label: 'SBP', value: m.sbp, unit: 'mmHg', dp: 0, derived: true },
-              { label: 'DBP', value: m.dbp, unit: 'mmHg', dp: 0, derived: true },
+              { label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true, ul: 12, dir: 'high' },
+              { label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true, ul: 8, dir: 'high' },
+              { label: 'SBP', value: m.sbp, unit: 'mmHg', dp: 0, derived: true, ll: 90, ul: 140, dir: 'both' },
+              { label: 'DBP', value: m.dbp, unit: 'mmHg', dp: 0, derived: true, ll: 60, ul: 90, dir: 'both' },
             ],
           },
         ]
+
+        // Subtle background tint: normal=green, abnormal=amber/red
+        const tint = (mt: Metric): string => {
+          const v = mt.value
+          if (v === undefined) return 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
+          const lo = mt.ll, hi = mt.ul, d = mt.dir
+          const isLow = lo !== undefined && v < lo && (d === 'low' || d === 'both')
+          const isHigh = hi !== undefined && v > hi && (d === 'high' || d === 'both')
+          if (isLow || isHigh) return 'bg-[hsl(4_55%_95%)] border-[hsl(4_40%_80%)]'
+          if (lo !== undefined || hi !== undefined) return 'bg-[hsl(158_30%_95%)] border-[hsl(158_25%_82%)]'
+          return 'bg-[hsl(var(--tone-neutral-50)/0.5)]'
+        }
 
         const allMetrics = groups.flatMap((g) =>
           g.metrics.filter((mt) => mt.value !== undefined).map((mt) => ({ ...mt, group: g.title }))
@@ -651,7 +666,7 @@ export function CmrLgePage() {
             {allMetrics.map((mt) => (
               <div
                 key={mt.label}
-                className="flex flex-col items-center rounded-lg border border-[hsl(var(--stroke-soft)/0.6)] bg-[hsl(var(--tone-neutral-50)/0.5)] px-3 py-2 min-w-[5.5rem]"
+                className={cn('flex flex-col items-center rounded-lg border px-3 py-2 min-w-[5.5rem]', tint(mt))}
               >
                 <span className="text-[0.65rem] font-medium text-muted-foreground/70 flex items-center gap-0.5">
                   {mt.label}
