@@ -1424,7 +1424,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "MPA diastolic area": {
@@ -1435,7 +1435,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "MPA distension": {
@@ -1480,7 +1480,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "RPA diastolic area": {
@@ -1491,7 +1491,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "RPA distension": {
@@ -1536,7 +1536,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "LPA diastolic area": {
@@ -1547,7 +1547,7 @@
       "sub_section": "Pulmonary arteries",
       "sources": [],
       "pap_affected": false,
-      "decimal_places": 1,
+      "decimal_places": 0,
       "abnormal_direction": "high"
     },
     "LPA distension": {

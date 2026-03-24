@@ -34,6 +34,7 @@ const VALVES: ValveInfo[] = [
 type FlowFieldDef = {
   key: string
   label: string
+  labelOverride?: Partial<Record<ValveId, string>>  // contextual label per valve (if different from default)
   unit: string
   column: 1 | 2  // 1 = left (flow volumes), 2 = right (gradients/velocity)
   paramKey: Record<ValveId, string | null>  // canonical parameter key per valve, null if N/A
@@ -81,17 +82,33 @@ const FLOW_FIELDS: FlowFieldDef[] = [
       tricuspid: null,
     },
   },
+  // MV/TV: show the input components used to derive regurgitant volume
   {
-    key: 'regurgitantFraction',
-    label: 'Regurgitant fraction',
-    unit: '%',
+    key: 'strokeVolume',
+    label: 'Stroke volume',
+    labelOverride: { mitral: 'LV stroke volume', tricuspid: 'RV stroke volume' },
+    unit: 'mL',
     column: 1,
-    dp: 1,
+    dp: 0,
     paramKey: {
-      aortic: 'AV regurgitant fraction',
-      pulmonary: 'PV regurgitant fraction',
-      mitral: 'MR regurgitant fraction',
-      tricuspid: 'TR regurgitant fraction',
+      aortic: null,
+      pulmonary: null,
+      mitral: 'LV SV',
+      tricuspid: 'RV SV',
+    },
+  },
+  {
+    key: 'outflowEffectiveForward',
+    label: 'Outflow effective forward flow',
+    labelOverride: { mitral: 'Aortic effective forward flow', tricuspid: 'Pulmonary effective forward flow' },
+    unit: 'mL/beat',
+    column: 1,
+    dp: 0,
+    paramKey: {
+      aortic: null,
+      pulmonary: null,
+      mitral: 'AV effective forward flow (per heartbeat)',
+      tricuspid: 'PV effective forward flow (per heartbeat)',
     },
   },
   {
@@ -105,6 +122,19 @@ const FLOW_FIELDS: FlowFieldDef[] = [
       pulmonary: null,                     // same as backward flow for PV — removed
       mitral: 'MR volume (per heartbeat)',
       tricuspid: 'TR volume (per heartbeat)',
+    },
+  },
+  {
+    key: 'regurgitantFraction',
+    label: 'Regurgitant fraction',
+    unit: '%',
+    column: 1,
+    dp: 1,
+    paramKey: {
+      aortic: 'AV regurgitant fraction',
+      pulmonary: 'PV regurgitant fraction',
+      mitral: 'MR regurgitant fraction',
+      tricuspid: 'TR regurgitant fraction',
     },
   },
   // Right column — gradients & velocity
@@ -922,17 +952,18 @@ function FlowPanel({ valve, values, derivedKeys, autoSeverity, manualSeverity, m
               {relevantFields.filter((f) => f.column === 1).map((field) => {
                 const paramKey = field.paramKey[valve.id]!
                 const displayVal = values[field.key]
+                const fieldLabel = field.labelOverride?.[valve.id] ?? field.label
                 return (
-                  <div key={field.key} className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-muted-foreground w-40 shrink-0 flex items-center" title={paramKey}>
-                      {field.label}
+                  <div key={field.key} className="flex items-center gap-3">
+                    <label className="text-sm text-muted-foreground w-52 shrink-0 flex items-center" title={paramKey}>
+                      {fieldLabel}
                       {derivedKeys.has(field.key) && <CalculatorIcon />}
                     </label>
-                    <div className="flex items-center gap-1.5 flex-1">
-                      <span className="h-8 w-20 flex items-center px-2.5 text-xs tabular-nums text-foreground">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="h-8 w-20 flex items-center px-2.5 text-[0.95rem] font-bold tabular-nums text-foreground">
                         {displayVal || '—'}
                       </span>
-                      <span className="text-xs text-muted-foreground">{field.unit}</span>
+                      <span className="text-sm text-muted-foreground/70">{field.unit}</span>
                     </div>
                   </div>
                 )
@@ -943,17 +974,18 @@ function FlowPanel({ valve, values, derivedKeys, autoSeverity, manualSeverity, m
               {relevantFields.filter((f) => f.column === 2).map((field) => {
                 const paramKey = field.paramKey[valve.id]!
                 const displayVal = values[field.key]
+                const fieldLabel = field.labelOverride?.[valve.id] ?? field.label
                 return (
-                  <div key={field.key} className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-muted-foreground w-40 shrink-0 flex items-center" title={paramKey}>
-                      {field.label}
+                  <div key={field.key} className="flex items-center gap-3">
+                    <label className="text-sm text-muted-foreground w-52 shrink-0 flex items-center" title={paramKey}>
+                      {fieldLabel}
                       {derivedKeys.has(field.key) && <CalculatorIcon />}
                     </label>
-                    <div className="flex items-center gap-1.5 flex-1">
-                      <span className="h-8 w-20 flex items-center px-2.5 text-xs tabular-nums text-foreground">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="h-8 w-20 flex items-center px-2.5 text-[0.95rem] font-bold tabular-nums text-foreground">
                         {displayVal || '—'}
                       </span>
-                      <span className="text-xs text-muted-foreground">{field.unit}</span>
+                      <span className="text-sm text-muted-foreground/70">{field.unit}</span>
                     </div>
                   </div>
                 )
