@@ -643,39 +643,34 @@ export function CmrLgePage() {
           },
         ]
 
+        const allMetrics = groups.flatMap((g) =>
+          g.metrics.filter((mt) => mt.value !== undefined).map((mt) => ({ ...mt, group: g.title }))
+        )
         return (
-          <div className="rounded-lg border border-[hsl(var(--stroke-soft)/0.6)] bg-[hsl(var(--tone-neutral-50)/0.5)] px-5 py-3">
-            <div className="flex items-start gap-8 flex-wrap">
-              {groups.map((g) => {
-                const live = g.metrics.filter((mt) => mt.value !== undefined)
-                if (live.length === 0) return null
-                return (
-                  <div key={g.title} className="flex flex-col gap-1">
-                    <span className="text-[0.65rem] font-semibold tracking-widest text-muted-foreground/60 uppercase">{g.title}</span>
-                    <div className="flex items-baseline gap-4">
-                      {live.map((mt) => (
-                        <div key={mt.label} className="flex items-baseline gap-1">
-                          <span className="text-[0.7rem] font-medium text-muted-foreground">{mt.label}</span>
-                          <span className="text-sm font-bold tabular-nums text-foreground">
-                            {mt.value!.toFixed(mt.dp)}
-                          </span>
-                          <span className="text-[0.65rem] text-muted-foreground/70">{mt.unit}</span>
-                          {mt.derived && (
-                            <svg className="h-3 w-3 text-muted-foreground/40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="2" y="1" width="12" height="14" rx="1.5" />
-                              <line x1="2" y1="5" x2="14" y2="5" />
-                              <line x1="5" y1="8" x2="11" y2="8" />
-                              <line x1="8" y1="5" x2="8" y2="11" />
-                              <line x1="5" y1="13" x2="11" y2="13" />
-                            </svg>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {allMetrics.map((mt) => (
+              <div
+                key={mt.label}
+                className="flex flex-col items-center rounded-lg border border-[hsl(var(--stroke-soft)/0.6)] bg-[hsl(var(--tone-neutral-50)/0.5)] px-3 py-2 min-w-[5.5rem]"
+              >
+                <span className="text-[0.65rem] font-medium text-muted-foreground/70 flex items-center gap-0.5">
+                  {mt.label}
+                  {mt.derived && (
+                    <svg className="h-2.5 w-2.5 text-muted-foreground/40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="1" width="12" height="14" rx="1.5" />
+                      <line x1="2" y1="5" x2="14" y2="5" />
+                      <line x1="5" y1="8" x2="11" y2="8" />
+                      <line x1="8" y1="5" x2="8" y2="11" />
+                      <line x1="5" y1="13" x2="11" y2="13" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-base font-bold tabular-nums text-foreground leading-tight">
+                  {mt.value!.toFixed(mt.dp)}
+                </span>
+                <span className="text-[0.6rem] text-muted-foreground/60">{mt.unit}</span>
+              </div>
+            ))}
           </div>
         )
       })()}
