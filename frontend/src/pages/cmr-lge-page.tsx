@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
 import { cn } from '@/lib/utils'
 import rwmaPaths from '@/data/rwma-paths.json'
 import { buildLgeSummaryData } from '@/lib/lge-summary-data'
+import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
 
 // ---------------------------------------------------------------------------
 // AHA 17-segment metadata (standard Cerqueira et al. 2002 territories)
@@ -462,6 +463,54 @@ export function CmrLgePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [llmError, setLlmError] = useState<string | null>(null)
 
+  // Pull quantitative metrics from the shared extraction store
+  const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
+  const contextMetrics = useMemo(() => {
+    const mv = new Map<string, number>()
+    if (extraction?.measurements) {
+      for (const m of extraction.measurements) mv.set(m.parameter, m.value)
+    }
+    const sex = extraction?.demographics?.sex ?? 'Male'
+    const age = extraction?.demographics?.age
+    const h = extraction?.demographics?.height_cm
+    const w = extraction?.demographics?.weight_kg
+    const bsa = (h && w && h > 0) ? Math.sqrt((h * w) / 3600) : undefined
+
+    // Direct measured values
+    const nativeT1 = mv.get('Native T1')
+    const postT1 = mv.get('Post-contrast T1')
+    const ecv = mv.get('ECV')
+    const nativeT2 = mv.get('Native T2')
+    const t2star = mv.get('Myocardial T2*')
+    const lvEf = mv.get('LV EF')
+    const lvMassi = mv.get('LV mass (i)')
+    const lvEdvi = mv.get('LV EDV (i)')
+    const rvEf = mv.get('RV EF')
+    const mrRf = mv.get('MR regurgitant fraction')
+
+    // Derived: PCWP = 5.7591 + (0.07505 × LAV) + (0.05289 × LVM) − (1.9927 × sex)
+    const lav = mv.get('LA max volume')
+    const lvm = mv.get('LV mass')
+    const pcwp = (lav !== undefined && lvm !== undefined)
+      ? 5.7591 + (0.07505 * lav) + (0.05289 * lvm) - (1.9927 * (sex === 'Male' ? 1 : 0))
+      : undefined
+
+    // Derived: mRAP = 6.4547 + (0.05828 × RAESV)
+    const raesv = mv.get('RA min volume')
+    const mrap = raesv !== undefined ? 6.4547 + (0.05828 * raesv) : undefined
+
+    // Derived: SBP = 83.845 + (0.4225 × Age) + (0.4187 × LVEF)
+    const sbp = (age !== undefined && lvEf !== undefined)
+      ? 83.845 + (0.4225 * age) + (0.4187 * lvEf) : undefined
+
+    // Derived: DBP = 58.8591 + (−0.1229 × AO fwd) + (8.2279 × BSA) + (0.1738 × LVMi)
+    const aoFwd = mv.get('AV forward flow (per heartbeat)')
+    const dbp = (aoFwd !== undefined && bsa !== undefined && lvMassi !== undefined)
+      ? 58.8591 + (-0.1229 * aoFwd) + (8.2279 * bsa) + (0.1738 * lvMassi) : undefined
+
+    return { nativeT1, postT1, ecv, nativeT2, t2star, lvEf, lvMassi, lvEdvi, rvEf, mrRf, pcwp, mrap, sbp, dbp }
+  }, [extraction])
+
   const paintSegment = useCallback(
     (seg: number, direction: 1 | -1 = 1) => {
       // Cycle transmurality: forward (left click) or backward (right click)
@@ -552,6 +601,84 @@ export function CmrLgePage() {
           className="!ml-0 !mt-0"
         />
       </Row>
+
+      {/* ── Context Metrics Tile ── */}
+      {(() => {
+        const m = contextMetrics
+        const hasAny = m.nativeT1 !== undefined || m.postT1 !== undefined || m.ecv !== undefined ||
+          m.t2star !== undefined || m.lvEf !== undefined || m.lvMassi !== undefined ||
+          m.lvEdvi !== undefined || m.rvEf !== undefined || m.mrRf !== undefined ||
+          m.pcwp !== undefined || m.mrap !== undefined || m.sbp !== undefined || m.dbp !== undefined
+        if (!hasAny) return null
+
+        type Metric = { label: string; value: number | undefined; unit: string; dp: number; derived?: boolean }
+        const groups: { title: string; metrics: Metric[] }[] = [
+          {
+            title: 'Tissue mapping',
+            metrics: [
+              { label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0 },
+              { label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0 },
+              { label: 'ECV', value: m.ecv, unit: '%', dp: 0 },
+              { label: 'T2*', value: m.t2star, unit: 'ms', dp: 1 },
+            ],
+          },
+          {
+            title: 'Ventricular function',
+            metrics: [
+              { label: 'LV EF', value: m.lvEf, unit: '%', dp: 1 },
+              { label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1 },
+              { label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1 },
+              { label: 'RV EF', value: m.rvEf, unit: '%', dp: 1 },
+              { label: 'MR RF', value: m.mrRf, unit: '%', dp: 1 },
+            ],
+          },
+          {
+            title: 'Derived haemodynamics',
+            metrics: [
+              { label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true },
+              { label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true },
+              { label: 'SBP', value: m.sbp, unit: 'mmHg', dp: 0, derived: true },
+              { label: 'DBP', value: m.dbp, unit: 'mmHg', dp: 0, derived: true },
+            ],
+          },
+        ]
+
+        return (
+          <div className="rounded-lg border border-[hsl(var(--stroke-soft)/0.6)] bg-[hsl(var(--tone-neutral-50)/0.5)] px-5 py-3">
+            <div className="flex items-start gap-8 flex-wrap">
+              {groups.map((g) => {
+                const live = g.metrics.filter((mt) => mt.value !== undefined)
+                if (live.length === 0) return null
+                return (
+                  <div key={g.title} className="flex flex-col gap-1">
+                    <span className="text-[0.65rem] font-semibold tracking-widest text-muted-foreground/60 uppercase">{g.title}</span>
+                    <div className="flex items-baseline gap-4">
+                      {live.map((mt) => (
+                        <div key={mt.label} className="flex items-baseline gap-1">
+                          <span className="text-[0.7rem] font-medium text-muted-foreground">{mt.label}</span>
+                          <span className="text-sm font-bold tabular-nums text-foreground">
+                            {mt.value!.toFixed(mt.dp)}
+                          </span>
+                          <span className="text-[0.65rem] text-muted-foreground/70">{mt.unit}</span>
+                          {mt.derived && (
+                            <svg className="h-3 w-3 text-muted-foreground/40" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="2" y="1" width="12" height="14" rx="1.5" />
+                              <line x1="2" y1="5" x2="14" y2="5" />
+                              <line x1="5" y1="8" x2="11" y2="8" />
+                              <line x1="8" y1="5" x2="8" y2="11" />
+                              <line x1="5" y1="13" x2="11" y2="13" />
+                            </svg>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Controls ── */}
       <div className="flex flex-col gap-3">
