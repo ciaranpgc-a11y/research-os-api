@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { Fragment, useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { PageHeader, Row, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
@@ -606,7 +606,7 @@ export function CmrLgePage() {
       {(() => {
         const m = contextMetrics
         const hasAny = m.nativeT1 !== undefined || m.postT1 !== undefined || m.ecv !== undefined ||
-          m.t2star !== undefined || m.lvEf !== undefined || m.lvMassi !== undefined ||
+          m.nativeT2 !== undefined || m.t2star !== undefined || m.lvEf !== undefined || m.lvMassi !== undefined ||
           m.lvEdvi !== undefined || m.rvEf !== undefined || m.mrRf !== undefined ||
           m.pcwp !== undefined || m.mrap !== undefined || m.sbp !== undefined || m.dbp !== undefined
         if (!hasAny) return null
@@ -614,6 +614,68 @@ export function CmrLgePage() {
         type Metric = {
           label: string; value: number | undefined; unit: string; dp: number; derived?: boolean
           ll?: number; ul?: number; dir?: 'high' | 'low' | 'both'
+          ref?: string // reference range text e.g. "950–1050"
+          icon?: 'T1' | 'T2' | 'ECV' | 'T2star'
+        }
+
+        // Severity: normal / mildly abnormal / significantly abnormal
+        type Severity = 'normal' | 'mild' | 'significant' | 'unknown'
+        const severity = (mt: Metric): Severity => {
+          const v = mt.value
+          if (v === undefined) return 'unknown'
+          const lo = mt.ll, hi = mt.ul, d = mt.dir
+          const isLow = lo !== undefined && v < lo && (d === 'low' || d === 'both')
+          const isHigh = hi !== undefined && v > hi && (d === 'high' || d === 'both')
+          if (!isLow && !isHigh) {
+            if (lo !== undefined || hi !== undefined) return 'normal'
+            return 'unknown'
+          }
+          // How far out of range (proportion of range width or fixed thresholds)
+          if (isLow && lo !== undefined) {
+            const deviation = (lo - v) / lo
+            return deviation > 0.15 ? 'significant' : 'mild'
+          }
+          if (isHigh && hi !== undefined) {
+            const deviation = (v - hi) / hi
+            return deviation > 0.15 ? 'significant' : 'mild'
+          }
+          return 'mild'
+        }
+
+        const severityDot = (s: Severity) => {
+          const col = s === 'normal' ? 'bg-emerald-500' : s === 'mild' ? 'bg-amber-500' : s === 'significant' ? 'bg-red-500' : 'bg-gray-300'
+          return <span className={cn('inline-block h-2 w-2 rounded-full shrink-0', col)} />
+        }
+
+        // Metric icons — small SVGs
+        const metricIcon = (icon?: Metric['icon']) => {
+          if (!icon) return null
+          const cls = 'h-4 w-4 text-muted-foreground/50'
+          switch (icon) {
+            case 'T1': return (
+              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v20M8 2h8" />{/* Magnet / T shape */}
+              </svg>
+            )
+            case 'T2': return (
+              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 4a5 5 0 0 1 10 0c0 3-4 5-4 8h-2c0-3-4-5-4-8Z" />{/* Droplet */}
+                <circle cx="12" cy="17" r="1.5" fill="currentColor" />
+              </svg>
+            )
+            case 'ECV': return (
+              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <path d="M3 12h18M12 3v18" />{/* Grid = extracellular matrix */}
+              </svg>
+            )
+            case 'T2star': return (
+              <svg className={cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" />{/* Star for T2* */}
+              </svg>
+            )
+            default: return null
+          }
         }
         // BP combined: abnormal if either SBP or DBP out of range
         const bpAbnormal = (
@@ -622,19 +684,39 @@ export function CmrLgePage() {
         )
         const bpHasRange = m.sbp !== undefined || m.dbp !== undefined
 
-        const singles: (Metric & { key: string })[] = [
-          { key: 'nT1', label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0, dir: 'both' },
-          { key: 'pcT1', label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0, dir: 'low' },
-          { key: 'ecv', label: 'ECV', value: m.ecv, unit: '%', dp: 0, ul: 30, dir: 'high' },
-          { key: 't2s', label: 'T2*', value: m.t2star, unit: 'ms', dp: 1, ll: 20, dir: 'low' },
-          { key: 'lvef', label: 'LV EF', value: m.lvEf, unit: '%', dp: 1, ll: 55, dir: 'low' },
-          { key: 'lvmi', label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1, ul: 81, dir: 'high' },
-          { key: 'lvedvi', label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1, ul: 98, dir: 'high' },
-          { key: 'rvef', label: 'RV EF', value: m.rvEf, unit: '%', dp: 1, ll: 45, dir: 'low' },
-          { key: 'mrrf', label: 'MR RF', value: m.mrRf, unit: '%', dp: 1, ul: 20, dir: 'high' },
-          { key: 'pcwp', label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true, ul: 12, dir: 'high' },
-          { key: 'mrap', label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true, ul: 8, dir: 'high' },
-        ].filter((mt) => mt.value !== undefined)
+        type MetricWithKey = Metric & { key: string }
+        type MetricRow = { label: string; metrics: MetricWithKey[] }
+        // Row 1: Tissue characterisation
+        const tissueRow: MetricRow = {
+          label: 'Tissue',
+          metrics: ([
+            { key: 'nT1', label: 'Native T1', value: m.nativeT1, unit: 'ms', dp: 0, ll: 950, ul: 1050, dir: 'both' as const, ref: '950–1050' },
+            { key: 'pcT1', label: 'Post-contrast T1', value: m.postT1, unit: 'ms', dp: 0, ll: 400, dir: 'low' as const, ref: '> 400' },
+            { key: 'ecv', label: 'ECV', value: m.ecv, unit: '%', dp: 0, ul: 30, dir: 'high' as const, ref: '< 30' },
+            { key: 'nT2', label: 'Native T2', value: m.nativeT2, unit: 'ms', dp: 0, ul: 55, dir: 'high' as const, ref: '< 55' },
+            { key: 't2s', label: 'T2*', value: m.t2star, unit: 'ms', dp: 1, ll: 20, dir: 'low' as const, ref: '> 20' },
+          ] as MetricWithKey[]).filter((mt) => mt.value !== undefined),
+        }
+        // Row 2: Structure & function
+        const structRow: MetricRow = {
+          label: 'Structure & function',
+          metrics: ([
+            { key: 'lvef', label: 'LV EF', value: m.lvEf, unit: '%', dp: 1, ll: 55, dir: 'low' as const },
+            { key: 'rvef', label: 'RV EF', value: m.rvEf, unit: '%', dp: 1, ll: 45, dir: 'low' as const },
+            { key: 'lvmi', label: 'LV mass (i)', value: m.lvMassi, unit: 'g/m²', dp: 1, ul: 81, dir: 'high' as const },
+            { key: 'lvedvi', label: 'LV EDV (i)', value: m.lvEdvi, unit: 'mL/m²', dp: 1, ul: 98, dir: 'high' as const },
+            { key: 'mrrf', label: 'MR RF', value: m.mrRf, unit: '%', dp: 1, ul: 20, dir: 'high' as const },
+          ] as MetricWithKey[]).filter((mt) => mt.value !== undefined),
+        }
+        // Row 3: Derived haemodynamics
+        const haemoRow: MetricRow = {
+          label: 'Haemodynamics',
+          metrics: ([
+            { key: 'pcwp', label: 'PCWP', value: m.pcwp, unit: 'mmHg', dp: 1, derived: true, ul: 12, dir: 'high' as const },
+            { key: 'mrap', label: 'mRAP', value: m.mrap, unit: 'mmHg', dp: 1, derived: true, ul: 8, dir: 'high' as const },
+          ] as MetricWithKey[]).filter((mt) => mt.value !== undefined),
+        }
+        const rows = [tissueRow, structRow, haemoRow].filter((r) => r.metrics.length > 0)
 
         // Subtle background tint: normal=green, abnormal=red
         const tint = (mt: Metric): string => {
@@ -665,37 +747,47 @@ export function CmrLgePage() {
         // Add BP card if either value available
         const hasBp = m.sbp !== undefined || m.dbp !== undefined
 
+        const renderCard = (mt: Metric & { key: string }) => {
+          const s = severity(mt)
+          return (
+            <div
+              key={mt.key}
+              className="flex flex-col items-center rounded-xl border bg-white px-5 py-4 relative"
+            >
+              {/* Severity dot top-right */}
+              <div className="absolute top-3 right-3">{severityDot(s)}</div>
+              {/* Label */}
+              <span className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                {mt.label}
+                {mt.derived && calcIcon}
+              </span>
+              {/* Value */}
+              <span className="text-3xl font-bold tabular-nums text-foreground leading-tight mt-1">
+                {mt.value!.toFixed(mt.dp)}
+              </span>
+              {/* Unit */}
+              <span className="text-sm font-medium text-muted-foreground/80 mt-0.5">{mt.unit}</span>
+              {/* Reference range */}
+              {mt.ref && (
+                <span className="text-sm text-muted-foreground/60 mt-1.5">{mt.ref}</span>
+              )}
+            </div>
+          )
+        }
+
+        // 2 rows: row1 = Tissue(4) + Structure(2 of 5), row2 = Structure(3 of 5) + Haemodynamics(2+BP)
+        // Use inline vertical separators between groups within each row
+
         return (
-          <div className="grid grid-cols-6 gap-2">
-            {singles.map((mt) => (
-              <div
-                key={mt.key}
-                className={cn('flex flex-col items-center rounded-lg border px-3 py-2', tint(mt))}
-              >
-                <span className="text-[0.65rem] font-medium text-muted-foreground/70 flex items-center gap-0.5">
-                  {mt.label}
-                  {mt.derived && calcIcon}
-                </span>
-                <span className="text-base font-bold tabular-nums text-foreground leading-tight">
-                  {mt.value!.toFixed(mt.dp)}
-                </span>
-                <span className="text-[0.6rem] text-muted-foreground/60">{mt.unit}</span>
-              </div>
+          <div className="flex gap-2.5">
+            {tissueRow.metrics.map((mt) => (
+              <div key={mt.key} className="flex-1 min-w-0">{renderCard(mt)}</div>
             ))}
-            {hasBp && (
-              <div className={cn('flex flex-col items-center justify-center rounded-lg border px-3 py-2', bpTint)}>
-                <span className="text-[0.65rem] font-medium text-muted-foreground/70 flex items-center gap-0.5">
-                  BP {calcIcon}
-                </span>
-                <span className="text-base font-bold tabular-nums text-foreground leading-tight">
-                  {m.sbp !== undefined ? Math.round(m.sbp) : '—'}/{m.dbp !== undefined ? Math.round(m.dbp) : '—'}
-                </span>
-                <span className="text-[0.6rem] text-muted-foreground/60">mmHg</span>
-              </div>
-            )}
           </div>
         )
       })()}
+
+      <div className="border-t-2 border-border/30" />
 
       {/* ── Controls ── */}
       <div className="flex flex-col gap-3">
