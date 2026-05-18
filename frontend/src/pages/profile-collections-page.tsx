@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom'
 
 import { CollectionsViewport } from '@/components/collections/CollectionsViewport'
 import { SectionMarker } from '@/components/patterns'
-import { PageHeader, Row, Stack } from '@/components/primitives'
+import { PageHeader, Row, Section, Stack } from '@/components/primitives'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseSurfaces } from '@/lib/house-style'
+import { houseLayout, houseSurfaces } from '@/lib/house-style'
 import { fetchPersonaState } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getSectionMarkerTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import type { PersonaStatePayload } from '@/types/impact'
+
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 
 export function ProfileCollectionsPage() {
   const navigate = useNavigate()
@@ -60,7 +62,7 @@ export function ProfileCollectionsPage() {
   }, [])
 
   return (
-    <Stack space="lg">
+    <Stack space="md" className="gap-0">
       <Row
         align="center"
         gap="md"
@@ -74,12 +76,15 @@ export function ProfileCollectionsPage() {
         />
       </Row>
 
-      <section
-        data-house-role="section-content"
+      <Section
         className={cn(
+          HOUSE_SECTION_ANCHOR_CLASS,
           houseSurfaces.sectionPanel,
-          'min-h-[calc(100vh-15rem)] overflow-hidden p-0',
+          '!mt-0 min-h-[calc(100vh-15rem)] overflow-hidden p-0',
         )}
+        surface="transparent"
+        inset="none"
+        spaceY="none"
       >
         {loading ? (
           <div className="flex min-h-[24rem] items-center justify-center px-6 py-10 text-sm text-muted-foreground">
@@ -100,7 +105,7 @@ export function ProfileCollectionsPage() {
             }}
           />
         )}
-      </section>
+      </Section>
     </Stack>
   )
 }

@@ -6,6 +6,8 @@
 const SESSION_TOKEN_KEY = 'cmr_session_token'
 const USER_NAME_KEY = 'cmr_user_name'
 const IS_ADMIN_KEY = 'cmr_is_admin'
+const ACCESS_CODE_ID_KEY = 'cmr_access_code_id'
+const LOCAL_CMR_DEV_API_BASE = 'http://127.0.0.1:8011'
 
 // --- Subdomain detection ---
 
@@ -22,6 +24,10 @@ export function isCmrSubdomain(): boolean {
   return host === 'cmr.axiomos.studio' || host === 'cmr.localhost' || isLocalCmrDevRoute()
 }
 
+export function isLocalCmrDev(): boolean {
+  return isLocalCmrDevRoute()
+}
+
 // --- Session storage ---
 
 export function getCmrSessionToken(): string | null {
@@ -36,16 +42,28 @@ export function isCmrAdmin(): boolean {
   return sessionStorage.getItem(IS_ADMIN_KEY) === 'true'
 }
 
-export function setCmrSession(token: string, name: string, isAdmin: boolean): void {
+export function getCmrAccessCodeId(): string | null {
+  return sessionStorage.getItem(ACCESS_CODE_ID_KEY)
+}
+
+export function getCmrSessionScopeKey(): string | null {
+  const accessCodeId = getCmrAccessCodeId()
+  if (!accessCodeId) return null
+  return `cmr-access:${accessCodeId}`
+}
+
+export function setCmrSession(token: string, name: string, isAdmin: boolean, accessCodeId: string): void {
   sessionStorage.setItem(SESSION_TOKEN_KEY, token)
   sessionStorage.setItem(USER_NAME_KEY, name)
   sessionStorage.setItem(IS_ADMIN_KEY, String(isAdmin))
+  sessionStorage.setItem(ACCESS_CODE_ID_KEY, accessCodeId)
 }
 
 export function clearCmrSession(): void {
   sessionStorage.removeItem(SESSION_TOKEN_KEY)
   sessionStorage.removeItem(USER_NAME_KEY)
   sessionStorage.removeItem(IS_ADMIN_KEY)
+  sessionStorage.removeItem(ACCESS_CODE_ID_KEY)
 }
 
 // --- API base URL ---
@@ -53,15 +71,16 @@ export function clearCmrSession(): void {
 function apiBase(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    // On local dev CMR routes, always use the local backend via Vite proxy
-    if (isLocalCmrDevRoute()) return window.location.origin
+    // Local CMR development runs against the repo-backed API on port 8011.
+    if (isLocalCmrDevRoute()) return LOCAL_CMR_DEV_API_BASE
     if (host === 'cmr.axiomos.studio' || host === 'cmr.localhost') {
       return window.location.origin
     }
   }
+
   const env = (import.meta.env.VITE_API_BASE_URL || '').trim()
   if (env) return env.replace(/\/+$/, '')
-  return 'http://127.0.0.1:8000'
+  return LOCAL_CMR_DEV_API_BASE
 }
 
 function cmrHeaders(token?: string | null): Record<string, string> {
@@ -70,12 +89,48 @@ function cmrHeaders(token?: string | null): Record<string, string> {
   return h
 }
 
-// --- API calls ---
+export function getCmrApiBase(): string {
+  return apiBase()
+}
+
+export function buildCmrHeaders(token?: string | null): Record<string, string> {
+  return cmrHeaders(token)
+}
 
 export type CmrLoginResult = {
   session_token: string
   name: string
   is_admin: boolean
+  access_code_id: string
+}
+
+type CmrSessionCheckResult = Pick<CmrLoginResult, 'name' | 'is_admin' | 'access_code_id'>
+
+function localSessionFallback(token: string): CmrSessionCheckResult | null {
+  if (typeof window === 'undefined') return null
+  if (!isLocalCmrDevRoute()) return null
+  if (getCmrSessionToken() !== token) return null
+
+  const name = getCmrUserName()
+  const accessCodeId = getCmrAccessCodeId()
+  if (!name || !accessCodeId) return null
+  return { name, is_admin: isCmrAdmin(), access_code_id: accessCodeId }
+}
+
+// --- API calls ---
+
+export function createLocalCmrDevSession(name = 'Local Dev'): CmrLoginResult {
+  const tokenSeed =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}`
+
+  return {
+    session_token: `cmr-local-dev-${tokenSeed}`,
+    name,
+    is_admin: false,
+    access_code_id: 'local-dev',
+  }
 }
 
 export async function cmrLogin(code: string): Promise<CmrLoginResult> {
@@ -98,15 +153,15 @@ export async function cmrAdminLogin(password: string): Promise<CmrLoginResult> {
   return resp.json()
 }
 
-export async function cmrCheckSession(token: string): Promise<{ name: string; is_admin: boolean } | null> {
+export async function cmrCheckSession(token: string): Promise<CmrSessionCheckResult | null> {
   try {
     const resp = await fetch(`${apiBase()}/v1/cmr/auth/me`, {
       headers: cmrHeaders(token),
     })
-    if (!resp.ok) return null
+    if (!resp.ok) return localSessionFallback(token)
     return resp.json()
   } catch {
-    return null
+    return localSessionFallback(token)
   }
 }
 

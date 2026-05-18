@@ -1,10 +1,13 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { SectionMarker } from '@/components/patterns'
 import { PageHeader, Row, Stack } from '@/components/primitives'
-import { SelectContent, SelectItem, SelectPrimitive, SelectTrigger, SelectValue } from '@/components/ui'
+import { Button, SelectContent, SelectItem, SelectPrimitive, SelectTrigger, SelectValue } from '@/components/ui'
 import { THROMBUS_LOCATION_ICONS } from '@/components/icons/thrombus-location-icons'
+import { generateCmrThrombusProse } from '@/lib/cmr-summary-api'
+import { buildThrombusSummaryData, buildThrombusSummarySignature } from '@/lib/cmr-thrombus-summary'
 import { cn } from '@/lib/utils'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 
 type ThrombusPrimary = 'LV' | 'LA' | 'LAA' | 'RV' | 'RA' | 'Aorta' | 'PA' | 'Device' | 'Other'
 
@@ -23,6 +26,13 @@ type ThrombusEntry = {
   otherLocation: string
   morphology: ThrombusMorphology
   confidence: 'definite' | 'probable' | 'indeterminate' | null
+  postContrast:
+    | 'not-reviewed'
+    | 'no-supportive-abnormality'
+    | 'non-enhancing-supportive'
+    | 'indeterminate'
+    | 'enhancement-less-likely'
+    | null
 }
 
 const PRIMARY_OPTIONS: { value: ThrombusPrimary; label: string }[] = [
@@ -91,6 +101,14 @@ const CONFIDENCE_OPTIONS = [
   },
 ]
 
+const POST_CONTRAST_OPTIONS = [
+  { value: 'not-reviewed' as const, label: 'Not performed / not reviewed' },
+  { value: 'no-supportive-abnormality' as const, label: 'No supportive post-contrast abnormality' },
+  { value: 'non-enhancing-supportive' as const, label: 'Non-enhancing lesion, supportive of thrombus' },
+  { value: 'indeterminate' as const, label: 'Indeterminate' },
+  { value: 'enhancement-less-likely' as const, label: 'Enhancement present, thrombus less likely' },
+]
+
 const PRIMARY_ICON_COLORS: Record<ThrombusPrimary, string> = {
   LV: 'text-[hsl(var(--section-style-report-accent))]',
   LA: 'text-[hsl(var(--tone-warning-700))]',
@@ -117,12 +135,25 @@ function createEmptyEntry(): ThrombusEntry {
       surface: null,
     },
     confidence: null,
+    postContrast: null,
+  }
+}
+
+function normalizeEntry(entry: ThrombusEntry): ThrombusEntry {
+  const maxDiameter = entry.morphology.maxDiameter
+  return {
+    ...entry,
+    morphology: {
+      ...entry.morphology,
+      maxDiameter: maxDiameter != null && Number.isFinite(maxDiameter) && maxDiameter > 0 ? maxDiameter : null,
+    },
   }
 }
 
 function entryShortLabel(entry: ThrombusEntry, index: number): string {
   if (entry.primary && entry.sublocation) return `${entry.primary} ${entry.sublocation}`
   if (entry.primary) return PRIMARY_OPTIONS.find((option) => option.value === entry.primary)?.label ?? entry.primary
+  if (index === 0) return 'No thrombus'
   return `Thrombus ${index + 1}`
 }
 
@@ -167,6 +198,11 @@ function PillSelect<T extends string>({
 function getConfidenceLabel(confidence: ThrombusEntry['confidence']): string {
   if (!confidence) return 'None'
   return CONFIDENCE_OPTIONS.find((option) => option.value === confidence)?.label ?? 'None'
+}
+
+function getPostContrastLabel(postContrast: ThrombusEntry['postContrast']): string {
+  if (!postContrast) return 'None'
+  return POST_CONTRAST_OPTIONS.find((option) => option.value === postContrast)?.label ?? 'None'
 }
 
 function SectionBadge({
@@ -216,10 +252,39 @@ function ThrombusSection({
 }
 
 export function CmrLvThrombusPage() {
-  const [entries, setEntries] = useState<ThrombusEntry[]>(() => [createEmptyEntry()])
-  const [activeEntryId, setActiveEntryId] = useState<string>(() => entries[0].id)
+  const activeCase = useCmrCaseStore((state) => state.activeCase)
+  const patchActiveCasePayload = useCmrCaseStore((state) => state.patchActiveCasePayload)
+  const initialThrombus = activeCase?.payload.thrombus
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [entries, setEntries] = useState<ThrombusEntry[]>(
+    () => (((initialThrombus?.entries as ThrombusEntry[] | undefined) ?? [createEmptyEntry()]).map(normalizeEntry)),
+  )
+  const [activeEntryId, setActiveEntryId] = useState<string>(
+    () => initialThrombus?.activeEntryId ?? initialThrombus?.entries[0]?.id ?? entries[0].id,
+  )
 
   const activeEntry = entries.find((entry) => entry.id === activeEntryId) ?? entries[0]
+
+  useEffect(() => {
+    const nextThrombus = activeCase?.payload.thrombus
+    const nextEntries = (((nextThrombus?.entries as ThrombusEntry[] | undefined) ?? [createEmptyEntry()]).map(normalizeEntry))
+    setEntries(nextEntries)
+    setActiveEntryId(nextThrombus?.activeEntryId ?? nextThrombus?.entries[0]?.id ?? nextEntries[0].id)
+    setIsGeneratingSummary(false)
+    setSummaryError(null)
+  }, [activeCase?.id])
+
+  useEffect(() => {
+    patchActiveCasePayload((payload) => ({
+      ...payload,
+      thrombus: {
+        ...payload.thrombus,
+        entries,
+        activeEntryId,
+      },
+    }))
+  }, [activeEntryId, entries, patchActiveCasePayload])
 
   const updateEntry = useCallback((id: string, patch: Partial<ThrombusEntry>) => {
     setEntries((prev) => prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
@@ -248,9 +313,15 @@ export function CmrLvThrombusPage() {
     })
   }, [activeEntryId])
 
+  const resetEntries = useCallback(() => {
+    const nextEntry = createEmptyEntry()
+    setEntries([nextEntry])
+    setActiveEntryId(nextEntry.id)
+  }, [])
+
   const filledCount = entries.filter((entry) =>
     entry.primary !== null ||
-    entry.morphology.maxDiameter !== null ||
+    (entry.morphology.maxDiameter != null && entry.morphology.maxDiameter > 0) ||
     entry.morphology.shape !== null ||
     entry.morphology.mobility !== null ||
     entry.confidence !== null,
@@ -259,7 +330,7 @@ export function CmrLvThrombusPage() {
     ? SUBLOCATION_OPTIONS[activeEntry.primary]
     : []
   const morphologyFieldsSet = [
-    activeEntry.morphology.maxDiameter !== null,
+    activeEntry.morphology.maxDiameter != null && activeEntry.morphology.maxDiameter > 0,
     activeEntry.morphology.shape !== null,
     activeEntry.morphology.mobility !== null,
     activeEntry.morphology.attachment !== null,
@@ -272,6 +343,47 @@ export function CmrLvThrombusPage() {
     : 'None'
   const morphologyStatus = morphologyFieldsSet === 0 ? 'None' : `${morphologyFieldsSet} set`
   const confidenceStatus = getConfidenceLabel(activeEntry.confidence)
+  const postContrastStatus = getPostContrastLabel(activeEntry.postContrast)
+  const thrombusSummaryData = useMemo(() => buildThrombusSummaryData(entries), [entries])
+  const thrombusSummarySignature = useMemo(
+    () => buildThrombusSummarySignature(thrombusSummaryData),
+    [thrombusSummaryData],
+  )
+  const thrombusSummary = activeCase?.payload.thrombus
+  const isThrombusSummaryStale = thrombusSummary?.llmProse != null
+    && thrombusSummary.llmProseSourceSignature !== thrombusSummarySignature
+
+  const handleGenerateSummary = useCallback(async () => {
+    setIsGeneratingSummary(true)
+    setSummaryError(null)
+    try {
+      const prose = await generateCmrThrombusProse(thrombusSummaryData)
+      patchActiveCasePayload((payload) => ({
+        ...payload,
+        thrombus: {
+          ...payload.thrombus,
+          llmProse: prose,
+          llmProseSourceSignature: thrombusSummarySignature,
+        },
+      }))
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsGeneratingSummary(false)
+    }
+  }, [patchActiveCasePayload, thrombusSummaryData, thrombusSummarySignature])
+
+  const clearSummary = useCallback(() => {
+    patchActiveCasePayload((payload) => ({
+      ...payload,
+      thrombus: {
+        ...payload.thrombus,
+        llmProse: null,
+        llmProseSourceSignature: null,
+      },
+    }))
+    setSummaryError(null)
+  }, [patchActiveCasePayload])
 
   return (
     <Stack data-house-role="page" className="gap-6">
@@ -288,7 +400,7 @@ export function CmrLvThrombusPage() {
             filledCount > 0 && 'bg-[hsl(var(--tone-danger-100))] text-[hsl(var(--tone-danger-600))]',
           )}
         >
-          {filledCount === 0 ? 'No thrombus detected' : filledCount === 1 ? '1 thrombus identified' : `${filledCount} thrombi identified`}
+          {filledCount === 0 ? 'No thrombus' : filledCount === 1 ? '1 thrombus described' : `${filledCount} thrombi described`}
         </span>
       </div>
 
@@ -334,6 +446,13 @@ export function CmrLvThrombusPage() {
           className="rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.6)] px-3 py-1.5 text-xs font-medium text-[hsl(var(--tone-neutral-400))] transition-colors hover:border-[hsl(var(--stroke-soft))] hover:text-[hsl(var(--tone-neutral-600))]"
         >
           + Add
+        </button>
+        <button
+          type="button"
+          onClick={resetEntries}
+          className="rounded-full border border-[hsl(var(--tone-danger-300))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--tone-danger-700))] transition-colors hover:bg-[hsl(var(--tone-danger-50))]"
+        >
+          Reset
         </button>
       </div>
 
@@ -453,7 +572,8 @@ export function CmrLvThrombusPage() {
                 step={1}
                 value={activeEntry.morphology.maxDiameter ?? ''}
                 onChange={(event) => {
-                  const nextValue = event.target.value === '' ? null : Number(event.target.value)
+                  const parsedValue = event.target.value === '' ? null : Number(event.target.value)
+                  const nextValue = parsedValue != null && Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : null
                   updateMorphology(activeEntry.id, { maxDiameter: nextValue })
                 }}
                 placeholder="—"
@@ -502,6 +622,51 @@ export function CmrLvThrombusPage() {
         </ThrombusSection>
 
         <ThrombusSection
+          title="Post-contrast characterisation"
+          statusLabel={postContrastStatus}
+          statusTone={activeEntry.postContrast ? 'active' : 'none'}
+        >
+          <div className="space-y-2 md:flex md:max-w-[34rem] md:items-center md:gap-2 md:space-y-0">
+            <span className="shrink-0 text-sm text-[hsl(var(--foreground))]">Post-contrast</span>
+            <SelectPrimitive
+              value={activeEntry.postContrast ?? undefined}
+              onValueChange={(value) =>
+                updateEntry(activeEntry.id, {
+                  postContrast: value === THROMBUS_SELECT_EMPTY_VALUE ? null : value as ThrombusEntry['postContrast'],
+                })
+              }
+            >
+              <SelectTrigger
+                aria-label="Post-contrast characterisation"
+                className="!h-8 !min-h-8 w-full rounded-md px-2.5 text-xs md:w-[24rem]"
+                style={{ paddingInline: '0.625rem', paddingBlock: '0' }}
+              >
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent
+                className="house-select-tone-thrombus min-w-[var(--radix-select-trigger-width)] border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--background))]"
+              >
+                <SelectItem
+                  value={THROMBUS_SELECT_EMPTY_VALUE}
+                  className="py-1.5 text-xs text-[hsl(var(--tone-neutral-500))] focus:text-[hsl(var(--tone-danger-800))]"
+                >
+                  Select...
+                </SelectItem>
+                {POST_CONTRAST_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    className="py-1.5 text-xs focus:text-[hsl(var(--tone-danger-800))] data-[state=checked]:text-[hsl(var(--tone-danger-800))]"
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectPrimitive>
+          </div>
+        </ThrombusSection>
+
+        <ThrombusSection
           title="Confidence"
           statusLabel={confidenceStatus}
           statusTone={activeEntry.confidence ? 'active' : 'none'}
@@ -512,6 +677,54 @@ export function CmrLvThrombusPage() {
             onChange={(value) => updateEntry(activeEntry.id, { confidence: value })}
           />
         </ThrombusSection>
+
+        <section className="rounded-xl border border-border/50 bg-card">
+          <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3">
+            <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
+            <h3 className="flex-1 text-sm font-semibold text-foreground">Thrombus summary</h3>
+            <span className="rounded-full bg-[hsl(var(--tone-neutral-100))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-700))]">
+              {thrombusSummaryData.thrombusCount === 0 ? 'NO THROMBUS' : thrombusSummaryData.thrombusCount === 1 ? '1 THROMBUS' : `${thrombusSummaryData.thrombusCount} THROMBI`}
+            </span>
+          </div>
+          <div className="p-5">
+            {thrombusSummary?.llmProse != null && (
+              <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                {thrombusSummary.llmProse}
+              </p>
+            )}
+
+            {summaryError && (
+              <p className="mt-2 text-xs text-red-500">{summaryError}</p>
+            )}
+
+            <div className="mt-3 flex items-center gap-3">
+              <Button
+                type="button"
+                variant="tertiary"
+                disabled={isGeneratingSummary}
+                onClick={() => { void handleGenerateSummary() }}
+                className="rounded-full px-4"
+              >
+                {isGeneratingSummary
+                  ? 'Generating...'
+                  : thrombusSummary?.llmProse != null
+                    ? isThrombusSummaryStale
+                      ? 'Regenerate Summary (Stale)'
+                      : 'Regenerate Summary'
+                    : 'Generate Summary'}
+              </Button>
+              {thrombusSummary?.llmProse != null && (
+                <button
+                  type="button"
+                  onClick={clearSummary}
+                  className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 transition-all hover:bg-red-50 hover:text-red-700"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </Stack>
   )

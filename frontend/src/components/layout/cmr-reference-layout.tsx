@@ -1,19 +1,26 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
+import { CmrExpertChat } from '@/components/layout/cmr-expert-chat'
 import { CmrTopBar } from '@/components/layout/cmr-top-bar'
 import { CmrReferenceNavigator } from '@/components/layout/cmr-reference-navigator'
 import { ScrollArea } from '@/components/ui'
 import { Sheet, SheetContent } from '@/components/ui'
+import { getCmrSessionScopeKey } from '@/lib/cmr-auth'
 import { getExtractionResult, subscribeExtractionResult, getNonContrast, subscribeNonContrast } from '@/lib/cmr-report-store'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 
 export function CmrReferenceLayout() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(false)
   const { pathname } = useLocation()
   const isAdminPage = pathname === '/cmr-admin'
+  const isReportsPage = pathname === '/cmr-reports'
+  const isCasePage = pathname.startsWith('/cmr/cases/')
   const [activeSection, setActiveSection] = useState<string | null>(() =>
     isAdminPage ? 'Overview' : null,
   )
+  const syncSessionScope = useCmrCaseStore((state) => state.syncSessionScope)
+  const flushActiveCase = useCmrCaseStore((state) => state.flushActiveCase)
 
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
   const hasReport = extraction !== null
@@ -21,17 +28,43 @@ export function CmrReferenceLayout() {
 
   const variant = isAdminPage
     ? 'admin'
+    : isReportsPage
+      ? 'reports'
     : pathname.includes('database')
       ? 'database'
-      : (pathname.includes('new-report')
+      : (isCasePage
+        || pathname.includes('new-report')
         || pathname.includes('upload-report')
         || pathname.includes('rwma')
         || pathname.includes('lge')
+        || pathname.includes('perfusion')
         || pathname.includes('valves')
         || pathname.includes('lv-thrombus')
         || pathname.includes('cmr-ph'))
         ? 'report'
         : 'reference'
+
+  useEffect(() => {
+    syncSessionScope(getCmrSessionScopeKey())
+  }, [syncSessionScope])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void flushActiveCase()
+      }
+    }
+    const handlePageHide = () => {
+      void flushActiveCase()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', handlePageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', handlePageHide)
+    }
+  }, [flushActiveCase])
 
   useEffect(() => {
     setActiveSection(isAdminPage ? 'Overview' : null)
@@ -93,6 +126,8 @@ export function CmrReferenceLayout() {
           />
         </SheetContent>
       </Sheet>
+
+      <CmrExpertChat />
     </div>
   )
 }

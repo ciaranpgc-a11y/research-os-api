@@ -9,6 +9,12 @@ from sqlalchemy import pool
 from research_os.db import Base
 from research_os.db import get_database_url
 
+# Import all extract models so Alembic autogenerate detects their tables.
+import research_os.extract_auth.models  # noqa: F401
+import research_os.extract_patients.models  # noqa: F401
+import research_os.extract_records.models  # noqa: F401
+import research_os.extract_recruitment.models  # noqa: F401
+
 config = context.config
 
 if config.config_file_name is not None:

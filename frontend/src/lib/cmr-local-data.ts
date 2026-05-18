@@ -7,6 +7,7 @@
  * Supports live reloading via reloadData() so edits are reflected immediately.
  */
 import rawData from '@/data/cmr_reference_data.json'
+import { buildCmrHeaders, getCmrApiBase, getCmrSessionToken } from './cmr-auth'
 import type {
   CmrAliasEntry,
   CmrCanonicalParam,
@@ -66,8 +67,17 @@ type RawRefRange = {
   abnormal_direction: string
 }
 
+type RawPapillaryMode = 'blood_pool' | 'mass'
+type RawReferencePreset = 'standard' | 'nnuh'
+
 type RawConfig = {
-  papillary_mode: 'blood_pool' | 'mass'
+  papillary_mode?: RawPapillaryMode
+  reference_preset?: RawReferencePreset
+}
+
+type ResolvedConfig = {
+  papillary_mode: RawPapillaryMode
+  reference_preset: RawReferencePreset
 }
 
 type RawData = {
@@ -88,6 +98,11 @@ let outputParamMap = new Map<string, RawOutputParam>()
 let orderedParamNames: string[] = []
 let rangesByParam = new Map<string, RawRefRange[]>()
 let extraParams: string[] = []
+
+function applyData(nextData: RawData) {
+  data = nextData
+  buildLookups()
+}
 
 function buildLookups() {
   if (!data?.output_params || !data?.ref_ranges) return
@@ -124,10 +139,11 @@ buildLookups()
  */
 export async function reloadData(): Promise<void> {
   try {
-    const res = await fetch('/api/cmr-data')
+    const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data`, {
+      headers: buildCmrHeaders(getCmrSessionToken()),
+    })
     if (!res.ok) return
-    data = await res.json()
-    buildLookups()
+    applyData(await res.json() as RawData)
   } catch {
     // Dev API not available — keep existing data
   }
@@ -137,8 +153,11 @@ export async function reloadData(): Promise<void> {
 // Age band resolution
 // ---------------------------------------------------------------------------
 
-function pickValues(r: RawRefRange): { ll: number | null; mean: number | null; ul: number | null; sd: number | null } {
-  const mode = data.config?.papillary_mode
+function pickValues(
+  r: RawRefRange,
+  papillaryModeOverride?: RawPapillaryMode,
+): { ll: number | null; mean: number | null; ul: number | null; sd: number | null } {
+  const mode = papillaryModeOverride ?? data.config?.papillary_mode
   if (mode === 'mass' && r.ll_mass !== null) {
     return { ll: r.ll_mass, mean: r.mean_mass, ul: r.ul_mass, sd: r.sd_mass }
   }
@@ -157,6 +176,7 @@ function resolveRange(
   parameter: string,
   sex: string,
   age?: number,
+  papillaryModeOverride?: RawPapillaryMode,
 ): { ll: number | null; mean: number | null; ul: number | null; sd: number | null; age_band: string | null; pap_differs: boolean } {
   const rows = rangesByParam.get(parameter)
   if (!rows) return { ll: null, mean: null, ul: null, sd: null, age_band: null, pap_differs: false }
@@ -172,33 +192,37 @@ function resolveRange(
     if (matching.length > 0) {
       matching.sort((a, b) => (a.age_max! - a.age_min!) - (b.age_max! - b.age_min!))
       const best = matching[0]
-      return { ...pickValues(best), age_band: best.age_band, pap_differs: papDiffers(best) }
+      return { ...pickValues(best, papillaryModeOverride), age_band: best.age_band, pap_differs: papDiffers(best) }
     }
   }
 
   // Fall back to Adult band
   const adult = sexRows.find((r) => r.age_band === 'Adult')
   if (adult) {
-    return { ...pickValues(adult), age_band: 'Adult', pap_differs: papDiffers(adult) }
+    return { ...pickValues(adult, papillaryModeOverride), age_band: 'Adult', pap_differs: papDiffers(adult) }
   }
 
   // No match at all — return first available
   const first = sexRows[0]
-  return { ...pickValues(first), age_band: first.age_band, pap_differs: papDiffers(first) }
+  return { ...pickValues(first, papillaryModeOverride), age_band: first.age_band, pap_differs: papDiffers(first) }
 }
 
 // ---------------------------------------------------------------------------
 // Public API (mirrors cmr-api.ts signatures)
 // ---------------------------------------------------------------------------
 
-export function resolveReferenceParameters(sex: string = 'Male', age?: number): CmrCanonicalTableResponse {
+export function resolveReferenceParameters(
+  sex: string = 'Male',
+  age?: number,
+  papillaryModeOverride?: RawPapillaryMode,
+): CmrCanonicalTableResponse {
   const parameters: CmrCanonicalParam[] = []
   let ageBandApplied: string | null = null
 
   for (let i = 0; i < orderedParamNames.length; i++) {
     const name = orderedParamNames[i]
     const op = outputParamMap.get(name)!
-    const resolved = resolveRange(name, sex, age)
+    const resolved = resolveRange(name, sex, age, papillaryModeOverride)
 
     if (resolved.age_band && !ageBandApplied && resolved.age_band !== 'Adult') {
       ageBandApplied = resolved.age_band
@@ -234,7 +258,7 @@ export function resolveReferenceParameters(sex: string = 'Male', age?: number): 
 
   // Add extra params (in ref_ranges but not output_params)
   for (const name of extraParams) {
-    const resolved = resolveRange(name, sex, age)
+    const resolved = resolveRange(name, sex, age, papillaryModeOverride)
     const sampleRow = rangesByParam.get(name)?.find((r) => r.sex === sex)
     if (!sampleRow) continue
 
@@ -320,6 +344,9 @@ export function resolveSections(): Record<string, string[]> {
 }
 
 /** Returns the config object */
-export function resolveConfig(): RawConfig {
-  return data.config || { papillary_mode: 'blood_pool' }
+export function resolveConfig(): ResolvedConfig {
+  return {
+    papillary_mode: data.config?.papillary_mode === 'mass' ? 'mass' : 'blood_pool',
+    reference_preset: data.config?.reference_preset === 'nnuh' ? 'nnuh' : 'standard',
+  }
 }

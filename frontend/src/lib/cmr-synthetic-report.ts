@@ -122,6 +122,14 @@ interface ParamOverride {
 
 type ProfileOverrides = Partial<Record<string, ParamOverride>>;
 
+export type SyntheticReportDataset = {
+  profile: PathologyProfile;
+  pathology: string;
+  demographics: Demographics;
+  values: Record<string, number>;
+  text: string;
+}
+
 function getProfileOverrides(profile: PathologyProfile): ProfileOverrides {
   switch (profile) {
     // -----------------------------------------------------------------------
@@ -452,7 +460,7 @@ function generateValue(
 // Enforce physiological consistency
 // ---------------------------------------------------------------------------
 
-function enforceConsistency(
+export function applySyntheticConsistency(
   vals: Record<string, number>,
   outputParams: Record<string, OutputParam>,
   demographics: Demographics,
@@ -635,7 +643,7 @@ function enforceConsistency(
 // Report text formatting (CVI42-style tab-separated with section headers)
 // ---------------------------------------------------------------------------
 
-function formatReportText(
+export function formatSyntheticReportText(
   vals: Record<string, number>,
   outputParams: Record<string, OutputParam>,
   demographics: Demographics,
@@ -702,11 +710,11 @@ function formatReportText(
 // Main export
 // ---------------------------------------------------------------------------
 
-export function generateSyntheticReport(
+export function generateSyntheticDataset(
   outputParams: Record<string, OutputParam>,
   refRanges: RefRange[],
   requestedProfile?: PathologyProfile,
-): { text: string; pathology: string } {
+): SyntheticReportDataset {
   // Pick a profile
   const profile: PathologyProfile = requestedProfile ?? pickRandom(ALL_PROFILES);
   const pathologyLabel = PATHOLOGY_LABELS[profile];
@@ -723,12 +731,27 @@ export function generateSyntheticReport(
   }
 
   // Enforce physiological consistency (recalculates derived values)
-  enforceConsistency(vals, outputParams, demographics);
+  applySyntheticConsistency(vals, outputParams, demographics);
 
   // Format the report text
-  const text = formatReportText(vals, outputParams, demographics, pathologyLabel);
+  const text = formatSyntheticReportText(vals, outputParams, demographics, pathologyLabel);
 
-  return { text, pathology: pathologyLabel };
+  return {
+    profile,
+    pathology: pathologyLabel,
+    demographics,
+    values: vals,
+    text,
+  };
+}
+
+export function generateSyntheticReport(
+  outputParams: Record<string, OutputParam>,
+  refRanges: RefRange[],
+  requestedProfile?: PathologyProfile,
+): { text: string; pathology: string } {
+  const dataset = generateSyntheticDataset(outputParams, refRanges, requestedProfile)
+  return { text: dataset.text, pathology: dataset.pathology }
 }
 
 // ---------------------------------------------------------------------------
@@ -742,6 +765,12 @@ export function generateSyntheticReportAuto(profile?: PathologyProfile): { text:
   const outputParams = refData.output_params as unknown as Record<string, OutputParam>
   const refRanges = Object.values(refData.ref_ranges) as unknown as RefRange[]
   return generateSyntheticReport(outputParams, refRanges, profile)
+}
+
+export function generateSyntheticDatasetAuto(profile?: PathologyProfile): SyntheticReportDataset {
+  const outputParams = refData.output_params as unknown as Record<string, OutputParam>
+  const refRanges = Object.values(refData.ref_ranges) as unknown as RefRange[]
+  return generateSyntheticDataset(outputParams, refRanges, profile)
 }
 
 export type { PathologyProfile, Demographics, OutputParam, RefRange };

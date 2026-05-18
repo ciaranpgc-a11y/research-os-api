@@ -1,0 +1,73 @@
+Extract structured echocardiography data from the attached source into the provided EchoRecord schema.
+
+Rules:
+- Extract only values and findings that are explicitly present in the source.
+- Do not infer missing measurements from narrative wording.
+- Do not calculate values from other fields.
+- Preserve uncertainty conservatively:
+  - leave ambiguous structured fields as null
+  - add the field name to `uncertain_fields`
+  - add a short explanation to `extraction_warnings`
+- If a `Conclusions` block is present, copy it exactly into `conclusion`.
+- Split the exact conclusions block into `conc_items`, one item per visible line or numbered conclusion.
+- Populate `case_type`, `primary_dx`, and `secondary_path` as short analytic summary outputs when the report supports them.
+- Do not include normal reference ranges in primary measurement fields unless the patient-specific measured value is explicitly shown.
+- If a measurement table is present, capture only the patient-specific measured values, not the accompanying normal ranges.
+- If a conclusion or narrative uses categorical wording rather than a number, use a short normalized clinical label when the target field is a coded descriptive field.
+- Do not copy full narrative sentences into coded descriptive fields when a short normalized label is clearly supported.
+- Use title-cased normalized labels for coded descriptive fields, for example `Normal`, `Small`, `Mildly dilated`, `Moderately dilated`, `Severely dilated`, `Mildly impaired`, `Moderately impaired`, `Severely impaired`, `Low`, `Intermediate`, `High`, `None`, `Yes`, `No`.
+- Keep raw narrative wording in text fields when that is safer than forcing a weak categorical mapping.
+
+Normalization and coding policy:
+- `lv_size_description`, `rv_size_description`, `left_atrium_size_description`, `right_atrium_size_description`, `ivc_size_description`, `aortic_root_description`, and `ascending_aorta_description` should prefer short normalized labels rather than copied sentences when the narrative is clear.
+- `lv_wall_thickness_description` should be normalized to a short label such as `Normal` when the report says wall thickness is normal.
+- `lv_systolic_function_description` and `rv_function_description` should prefer short normalized labels such as `Normal` when the narrative clearly states normal systolic function.
+- For `rv_function_description`, normalize wording such as `preserved`, `good`, or `within normal limits` to `Normal`.
+- Normalize shorthand rhythm labels to clear full labels when the meaning is obvious, for example `Sinus tachy` -> `Sinus tachycardia`.
+- `image_quality` must use only these clear buckets when the report wording supports them: `Excellent`, `Good`, `Fair`, `Suboptimal`, or `Poor`. If the wording is vague or narrative, omit the field rather than inventing a category.
+- If `BSA` is not explicitly provided but both height and weight are available, calculate `bsa_m2` using the Mosteller formula.
+- Do not convert an EF range into a midpoint numeric `lvef_percent`. If the report gives a range such as `60-65%`, leave `lvef_percent` null and preserve the range in `lvef_visual_estimate_text`.
+- `lvef_visual_estimate_text` should contain only the percentage text itself, for example `>55%` or `60-65%`, without adding labels such as `(visual estimate)`.
+- `pulmonary_hypertension_probability` should be normalized to a short coded level such as `Low`, `Intermediate`, or `High` when the report wording clearly supports that level.
+- `septal_flattening_present`, `septal_bounce_present`, `d_shaped_lv_present`, and `pulmonary_artery_dilated_present` should only be populated when the report explicitly states those structural findings.
+- `case_type` must use one of these broad families only: `Normal`, `Valve`, `Heart failure / cardiomyopathy`, `Ischaemic`, `Arrhythmia / EP`, `Pulmonary hypertension / right heart`, `Pericardial`, `Aortic`, `Congenital`, `Mass / thrombus / infective`, `Post-operative / prosthetic / device`, or `Other`.
+- `primary_dx` should be the dominant short label within that broad family, not an over-detailed sentence. Prefer labels such as `Normal echo`, `Severe AS`, `Moderate MR`, `HFrEF`, `LV diastolic dysfunction`, `Prior MI with RWMA`, `Pulmonary hypertension`, `Pericardial effusion`, `Ascending aortic dilatation`, `ASD`, or `Prosthetic valve assessment`.
+- `secondary_path` should contain at most one additional major co-label when one is clearly worth preserving; otherwise omit it.
+- Do not fill `secondary_path` with filler phrases such as `Normal echo otherwise`, `otherwise normal`, or similar non-pathology summaries.
+- Use precedence rules for the case bucket: tamponade, major pericardial disease, endocarditis / mass / thrombus, severe valve disease, major pulmonary hypertension / RV pressure overload, major congenital disease, and major aortic disease should override mild incidental abnormalities. Mild trace findings alone should not force a `Valve` case type.
+- Avoid overly clever diagnosis strings such as multi-lesion sentences. Keep the main bucket broad and let the detailed structured fields carry the granularity.
+- Valve stenosis and regurgitation severity fields should contain severity coding only, not explanatory sentences.
+- If the report states there is no stenosis or no regurgitation, code the relevant severity field as `None`.
+- General valve description fields should be concise appearance phrases rather than full copied sentences when the morphology is clear, for example `Tricuspid, mildly thickened cusps with good excursion` or `Thin with good excursion`.
+- If valve appearance wording is equivalent to normal morphology and normal function, normalize it to `Normal`.
+- Do not over-collapse valve morphology into a single word when the report gives concise structural detail. Preserve mild thickening/calcification and excursion in a short phrase, for example `Tricuspid, very mildly thickened/calcified with good excursion`.
+- Keep the separate valve severity fields short and coded.
+- If `AR PHT`, `AR pressure half-time`, `PAT`, or `PVAT` are explicitly reported, capture them in their dedicated millisecond fields.
+- If a `main pulmonary artery` or `MPA` diameter is explicitly reported, capture the numeric value in `main_pulmonary_artery_diameter_mm`.
+- If RV systolic pressure is reported numerically but explicitly qualified as excluding RAP, populate `rvsp_mmhg` with the numeric value and preserve the qualifier in `extraction_warnings`.
+- If a simple numeric range is reported for heart rate or estimated RAP, use the midpoint, for example `100-130` -> `115` and `5-10 mmHg` -> `7.5`.
+- If the report clearly states that no colour flow is seen across the interatrial septum, `interatrial_septum_intact` may be set to `Yes` when that interpretation is explicit enough for review use.
+- If an explicit IVC measurement is available, use the numeric value rather than relying only on a descriptor.
+- Populate `ivc_size_description` with the normalized numeric value only, without a unit suffix, because the UI already provides the mm unit.
+- If no explicit IVC measurement is available but the narrative clearly describes the IVC size, use the descriptor such as `Normal`.
+
+Echo-specific mapping guidance:
+- `Hosp No`, `Hosp. No`, and `Hospital Number` map to `hospital_number`.
+- Combine `First Name` + `Surname` into `patient_name` in first-name-last-name order.
+- `DOB` and `Date of Birth` map to `date_of_birth`.
+- `Date` in the report header maps to `study_date`.
+- `ward_or_op` should use the core location name and strip generic suffixes such as `ward` when the remaining location is clear, for example `Langley ward` -> `Langley`.
+- `Rhythm during study` or `Rhythm : Rate` maps to `rhythm`, and the visible numeric rate maps to `heart_rate_bpm`.
+- `TAPSE`, `RV S'`, `FAC`, `RVSP`, `RAP`, `IVC`, and pulmonary hypertension probability statements are clinically important and should be captured when explicit.
+- Convert source units into the schema units. For example, `TAPSE 2.1 cm` should populate `tapse` as `21` because the schema field is millimetres; chamber/aortic diameters labelled in cm should likewise be converted to mm.
+- `RV S'` and tricuspid `TDI` refer to the same longitudinal RV systolic metric and should map to `rv_s_prime_cm_s`.
+- Preserve exact severity wording for regurgitation/stenosis fields such as `trace`, `mild`, `mild to moderate`, `moderate`, or `severe`.
+- If the report states `estimated RVSP 23mmHg + RAP`, only populate `rvsp_mmhg` if a single explicit numeric RVSP value is reported; if it is explicitly reported as excluding RAP, keep the numeric value and warn that RAP is excluded.
+- If a section says a structure is `normal size`, `small`, `dilated`, `mildly dilated`, `impaired`, or similar, normalize to the shortest clear descriptor supported by the text.
+- If an IVC measurement table gives a clear patient-specific diameter value, use that value even when the narrative does not restate the IVC size.
+- If a chamber or valve conclusion is only present in the `Conclusions` block, capture it there even if the corresponding structured field remains null.
+
+Important:
+- Many echo reports contain both narrative findings and a measurement/reference table.
+- The `Conclusions` block is a high-priority source of truth and should be preserved exactly when visible.
+- If you cannot confidently separate measured values from reference ranges, leave the structured measurement field null and add a warning.

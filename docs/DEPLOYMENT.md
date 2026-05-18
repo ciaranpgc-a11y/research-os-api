@@ -16,6 +16,8 @@ cold-start latency.
 
 ### Architecture
 
+The same frontend bundle can also be published at `extract.axiomos.studio`. Caddy should route `/v1/*` to the API container there as well, with all other paths going to the frontend container.
+
 ```
 Internet
   │
@@ -51,6 +53,7 @@ hostnames before DNS exists.
 - Hetzner VPS with Docker and Docker Compose installed
 - DNS: `app.axiomos.studio` A-record pointing to the server IP
 - DNS: `api.axiomos.studio` A-record pointing to the server IP
+- DNS: `extract.axiomos.studio` A-record or proxied CNAME pointing to the same server
 - DNS: `grobid.axiomos.studio` A-record pointing to the server IP
 - Ports 80 and 443 open in the firewall
 
@@ -74,7 +77,7 @@ curl -I https://app.axiomos.studio
 curl -sf https://api.axiomos.studio/v1/health/ready && echo OK
 ```
 
-Set `AXIOMOS_BOOTSTRAP_ROLE=admin` in `.env` for the bootstrap account to retain admin access on Hetzner. The preferred bootstrap env names now use the `AXIOMOS_` prefix. Older `AAWE_BOOTSTRAP_*`, `ADMIN_USERNAME`, and `ADMIN_EMAIL` names are still accepted as compatibility fallbacks.
+Set `AXIOMOS_BOOTSTRAP_ROLE=admin` in `.env` for the bootstrap account to retain admin access on Hetzner. The preferred bootstrap env names now use the `AXIOMOS_` prefix. Older `AAWE_BOOTSTRAP_*`, `ADMIN_USERNAME`, and `ADMIN_EMAIL` names are still accepted as compatibility fallbacks. Set `EXTRACT_ADMIN_PASSWORD` as well if you want the Extract admin login available on the public deployment.
 
 ### Updating
 
@@ -155,6 +158,7 @@ Use this order to finish the transition with minimal risk.
 
 - Live UI: `app.axiomos.studio`
 - Live API: `api.axiomos.studio`
+- Live Extract: `extract.axiomos.studio`
 - Preview UI: `preview.axiomos.studio`
 - Preview API: `preview-api.axiomos.studio`
 
@@ -205,10 +209,11 @@ Create or update these DNS records to point at the Hetzner IP:
 
 - `app.axiomos.studio`
 - `api.axiomos.studio`
+- `extract.axiomos.studio`
 
 Cloudflare settings:
 
-- proxy enabled is fine for `app` and `api`
+- proxy enabled is fine for `app`, `api`, and `extract`
 - SSL mode should be `Full (strict)`
 
 Wait for DNS to settle, then verify the live UI is loading the Hetzner-served frontend and talking to the Hetzner API.

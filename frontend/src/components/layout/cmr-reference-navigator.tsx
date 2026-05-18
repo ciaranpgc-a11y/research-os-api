@@ -1,16 +1,18 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 
 import { ScrollArea } from '@/components/ui'
+import { buildCmrCasePath } from '@/lib/cmr-case-routes'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { resolveSections } from '@/lib/cmr-local-data'
 import { cn } from '@/lib/utils'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 
 type RefNavProps = {
   activeSection: string | null
   onSectionJump: (sectionKey: string) => void
   onNavigate?: () => void
-  variant: 'reference' | 'database' | 'report' | 'admin'
+  variant: 'reference' | 'database' | 'report' | 'reports' | 'admin'
   /** Optional override for section names (keys should be UPPERCASE). When provided, replaces locally-resolved sections. */
   sectionKeys?: string[]
   /** Whether a report has been extracted. When false, VISUALISER and MODULES nav items are disabled. */
@@ -32,22 +34,6 @@ const LABEL_OVERRIDES: Record<string, string> = {
   'Additional granular details': 'Additional details',
 }
 
-const REPORT_RAW_NAV = [
-  { key: 'upload', path: '/cmr-upload-report', label: 'Upload report' },
-]
-
-const REPORT_VISUALISER_NAV = [
-  { key: 'quantitative', path: '/cmr-new-report', label: 'Quantitative metrics' },
-  { key: 'rwma', path: '/cmr-rwma', label: 'Wall motion' },
-  { key: 'lge', path: '/cmr-lge', label: 'Tissue characterisation' },
-  { key: 'valves', path: '/cmr-valves', label: 'Valves' },
-]
-
-const REPORT_MODULES_NAV = [
-  { key: 'lv-thrombus', path: '/cmr-lv-thrombus', label: 'Thrombus' },
-  { key: 'ph', path: '/cmr-ph', label: 'PH' },
-]
-
 const ADMIN_NAV = [
   { key: 'overview', sectionKey: 'Overview', label: 'Overview' },
   { key: 'access-codes', sectionKey: 'Access Codes', label: 'Access Codes' },
@@ -62,14 +48,16 @@ export function CmrReferenceNavigator({
   hasReport = true,
   nonContrast = false,
 }: RefNavProps) {
-  const borderClass = variant === 'report'
+  const isReportStyleVariant = variant === 'report' || variant === 'reports'
+
+  const borderClass = isReportStyleVariant
     ? 'house-left-border-report'
     : variant === 'reference'
       ? 'house-left-border-profile'
       : variant === 'admin'
         ? 'house-left-border-admin'
       : 'house-left-border-learning-centre'
-  const navItemClass = variant === 'report'
+  const navItemClass = isReportStyleVariant
     ? houseNavigation.itemReport
     : variant === 'reference'
       ? houseNavigation.itemOverview
@@ -78,6 +66,81 @@ export function CmrReferenceNavigator({
       : houseNavigation.itemLearningCentre
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const activeCaseId = useCmrCaseStore((state) => state.activeCaseId)
+  const activeCase = useCmrCaseStore((state) => state.activeCase)
+  const createFreshCase = useCmrCaseStore((state) => state.createFreshCase)
+  const flushActiveCase = useCmrCaseStore((state) => state.flushActiveCase)
+  const [creatingReport, setCreatingReport] = useState(false)
+  const isReportsIndexPath = pathname === '/cmr-reports'
+  const isAnyCasePath = pathname.startsWith('/cmr/cases/')
+
+  const uploadPath = activeCaseId ? buildCmrCasePath(activeCaseId, 'upload') : null
+  const uploadEntryLabel = creatingReport
+    ? 'Creating...'
+    : activeCaseId
+      ? 'Raw Upload'
+      : 'New Report'
+
+  const REPORTS_CASE_NAV = [
+    { key: 'reports', path: '/cmr-reports', label: 'My Reports' },
+    { key: 'upload', path: uploadPath, label: uploadEntryLabel },
+  ]
+
+  const REPORT_VISUALISER_NAV = activeCaseId
+    ? [
+        { key: 'quantitative', path: buildCmrCasePath(activeCaseId, 'report'), label: 'Quantitative metrics' },
+        { key: 'rwma', path: buildCmrCasePath(activeCaseId, 'rwma'), label: 'Wall motion' },
+        { key: 'lge', path: buildCmrCasePath(activeCaseId, 'lge'), label: 'Tissue characterisation' },
+        { key: 'perfusion', path: buildCmrCasePath(activeCaseId, 'perfusion'), label: 'Perfusion' },
+        { key: 'valves', path: buildCmrCasePath(activeCaseId, 'valves'), label: 'Valves' },
+      ]
+    : []
+
+  const REPORT_MODULES_NAV = activeCaseId
+    ? [
+        { key: 'lv-thrombus', path: buildCmrCasePath(activeCaseId, 'lv-thrombus'), label: 'Thrombus' },
+        { key: 'ph', path: buildCmrCasePath(activeCaseId, 'ph'), label: 'PH' },
+      ]
+    : []
+
+  const REPORT_OUTPUT_NAV = activeCaseId
+    ? [
+        { key: 'output', path: buildCmrCasePath(activeCaseId, 'output'), label: 'Report output' },
+      ]
+    : []
+
+  const handleOpenUpload = async () => {
+    if (uploadPath) {
+      const saved = await flushActiveCase()
+      if (!saved) return
+      navigate(uploadPath)
+      onNavigate?.()
+      return
+    }
+
+    setCreatingReport(true)
+    try {
+      const created = await createFreshCase()
+      if (!created) return
+      navigate(buildCmrCasePath(created.id, 'upload'))
+      onNavigate?.()
+    } finally {
+      setCreatingReport(false)
+    }
+  }
+
+  const navigateWithAutosave = async (path: string) => {
+    const saved = await flushActiveCase()
+    if (!saved) return
+    navigate(path)
+    onNavigate?.()
+  }
+
+  const isReportsNavItemActive = (itemKey: string, itemPath: string | null) => {
+    if (itemKey === 'reports') return isReportsIndexPath
+    if (itemKey === 'upload') return isAnyCasePath
+    return itemPath != null && pathname === itemPath
+  }
 
   // Build nav sections dynamically from sections config (or override prop)
   const paramSections = useMemo(() => {
@@ -94,22 +157,26 @@ export function CmrReferenceNavigator({
         <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, borderClass)}>
           <h1 className={houseTypography.sectionTitle}>
             {variant === 'report'
-              ? 'New Report'
+              ? 'Reports'
+              : variant === 'reports'
+                ? 'Reports'
               : variant === 'reference'
                 ? 'Reference'
                 : variant === 'database'
                   ? 'Reference Database'
                   : 'Admin'}
           </h1>
-          {variant !== 'report' && (
-            <p className={houseTypography.fieldHelper}>
-              {variant === 'reference'
-                ? 'CMR Reference Data'
-                : variant === 'database'
-                  ? 'View & Edit Reference Data'
-                  : 'CMR Access Management'}
-            </p>
-          )}
+          <p className={houseTypography.fieldHelper}>
+            {variant === 'report'
+              ? (activeCase?.title || 'Current report')
+              : variant === 'reports'
+                ? 'Persisted draft reports'
+                : variant === 'reference'
+                  ? 'CMR Reference Data'
+                  : variant === 'database'
+                    ? 'View & Edit Reference Data'
+                    : 'CMR Access Management'}
+          </p>
         </div>
       </div>
       <ScrollArea className={houseLayout.sidebarScroll}>
@@ -117,17 +184,25 @@ export function CmrReferenceNavigator({
           {variant === 'report' ? (
             <>
               <section className={houseLayout.sidebarSection}>
-                <p className={houseNavigation.sectionLabel}>RAW</p>
+                <p className={houseNavigation.sectionLabel}>REPORTS</p>
                 <div className={houseNavigation.list}>
-                  {REPORT_RAW_NAV.map((item) => (
+                  {REPORTS_CASE_NAV.map((item) => (
                     <button
                       key={item.key}
                       type="button"
-                      onClick={() => { navigate(item.path); onNavigate?.() }}
+                      disabled={item.key === 'upload' && creatingReport}
+                      onClick={() => {
+                        if (item.key === 'upload') {
+                          void handleOpenUpload()
+                          return
+                        }
+                        void navigateWithAutosave(item.path!)
+                      }}
                       className={cn(
                         houseNavigation.item,
                         navItemClass,
-                        pathname === item.path && houseNavigation.itemActive,
+                        isReportsNavItemActive(item.key, item.path) && houseNavigation.itemActive,
+                        item.key === 'upload' && creatingReport && 'cursor-not-allowed opacity-60',
                       )}
                     >
                       <span className={houseNavigation.itemLabel}>{item.label}</span>
@@ -146,7 +221,7 @@ export function CmrReferenceNavigator({
                         key={item.key}
                         type="button"
                         disabled={disabled}
-                        onClick={() => { if (!disabled) { navigate(item.path); onNavigate?.() } }}
+                        onClick={() => { if (!disabled) { void navigateWithAutosave(item.path) } }}
                         className={cn(
                           houseNavigation.item,
                           navItemClass,
@@ -168,7 +243,7 @@ export function CmrReferenceNavigator({
                       key={item.key}
                       type="button"
                       disabled={!hasReport}
-                      onClick={() => { if (hasReport) { navigate(item.path); onNavigate?.() } }}
+                      onClick={() => { if (hasReport) { void navigateWithAutosave(item.path) } }}
                       className={cn(
                         houseNavigation.item,
                         navItemClass,
@@ -181,7 +256,56 @@ export function CmrReferenceNavigator({
                   ))}
                 </div>
               </section>
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>OUTPUT</p>
+                <div className={houseNavigation.list}>
+                  {REPORT_OUTPUT_NAV.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      disabled={!item.path}
+                      onClick={() => { if (item.path) { void navigateWithAutosave(item.path) } }}
+                      className={cn(
+                        houseNavigation.item,
+                        navItemClass,
+                        item.path != null && pathname === item.path && houseNavigation.itemActive,
+                        !item.path && 'cursor-not-allowed opacity-40',
+                      )}
+                    >
+                      <span className={houseNavigation.itemLabel}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             </>
+          ) : variant === 'reports' ? (
+            <section className={houseLayout.sidebarSection}>
+              <p className={houseNavigation.sectionLabel}>REPORTS</p>
+              <div className={houseNavigation.list}>
+                {REPORTS_CASE_NAV.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    disabled={item.key === 'upload' && creatingReport}
+                    onClick={() => {
+                      if (item.key === 'upload') {
+                        void handleOpenUpload()
+                        return
+                      }
+                      void navigateWithAutosave(item.path!)
+                    }}
+                    className={cn(
+                      houseNavigation.item,
+                      navItemClass,
+                      isReportsNavItemActive(item.key, item.path) && houseNavigation.itemActive,
+                      item.key === 'upload' && creatingReport && 'cursor-not-allowed opacity-60',
+                    )}
+                  >
+                    <span className={houseNavigation.itemLabel}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
           ) : variant === 'admin' ? (
             <section className={houseLayout.sidebarSection}>
               <p className={houseNavigation.sectionLabel}>MANAGEMENT</p>

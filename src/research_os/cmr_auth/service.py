@@ -70,6 +70,7 @@ def _create_admin_session() -> dict | None:
             "session_token": token,
             "name": "Admin",
             "is_admin": True,
+            "access_code_id": "admin",
         }
 
 
@@ -125,6 +126,7 @@ def user_login(code: str) -> dict | None:
             "session_token": token,
             "name": matched_row.name,
             "is_admin": False,
+            "access_code_id": matched_row.id,
         }
 
 
@@ -132,6 +134,17 @@ def user_login(code: str) -> dict | None:
 
 
 def get_session_user(token: str) -> dict | None:
+    context = get_session_context(token)
+    if context is None:
+        return None
+    return {
+        "name": context["name"],
+        "is_admin": context["is_admin"],
+        "access_code_id": context["access_code_id"],
+    }
+
+
+def get_session_context(token: str) -> dict | None:
     _ensure_tables()
     with session_scope() as session:
         stmt = (
@@ -148,6 +161,7 @@ def get_session_user(token: str) -> dict | None:
             return None
 
         return {
+            "access_code_id": access_code.id,
             "name": access_code.name,
             "is_admin": cmr_session.is_admin,
         }

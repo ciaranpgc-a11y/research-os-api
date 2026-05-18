@@ -1,9 +1,38 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { PageHeader, Stack } from '@/components/primitives'
 import { SectionMarker } from '@/components/patterns'
+import {
+  buildAorticValveSummaryData,
+  buildAorticValveSummarySignature,
+} from '@/lib/cmr-aortic-valve-summary'
+import {
+  buildMitralValveSummaryData,
+  buildMitralValveSummarySignature,
+} from '@/lib/cmr-mitral-valve-summary'
+import {
+  buildTricuspidValveSummaryData,
+  buildTricuspidValveSummarySignature,
+} from '@/lib/cmr-tricuspid-valve-summary'
+import {
+  getEffectiveForwardFlow,
+  normalizeValveMeasurementMap,
+} from '@/lib/cmr-flow-measurements'
 import { cn } from '@/lib/utils'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
+import {
+  generateCmrAorticValveProse,
+  generateCmrMitralValveProse,
+  generateCmrTricuspidValveProse,
+} from '@/lib/cmr-summary-api'
+import {
+  type RegurgitationSeverity as Severity,
+  REGURGITATION_SEVERITY_COLORS as SEVERITY_COLORS,
+  REGURGITATION_SEVERITY_LABELS as SEVERITY_LABELS,
+  RF_REGURGITATION_SEVERITY_THRESHOLDS as RF_SEVERITY_THRESHOLDS,
+  rfToRegurgitationSeverity as rfToSeverity,
+} from '@/lib/cmr-valve-severity'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 
 // ---------------------------------------------------------------------------
 // Valve metadata
@@ -368,6 +397,14 @@ const LEAFLET_NAMES: Record<ValveId, string[]> = {
   pulmonary: ['Anterior', 'Left', 'Right'],
 }
 
+const LEAFLET_DISPLAY_NAMES: Partial<Record<ValveId, Record<string, string>>> = {
+  aortic: {
+    'Right coronary cusp': 'RCC',
+    'Left coronary cusp': 'LCC',
+    'Non-coronary cusp': 'NCC',
+  },
+}
+
 
 // -- Per-finding detail state --
 
@@ -389,44 +426,94 @@ function emptyMorphology(): ValveMorphology {
   return { findings: {} }
 }
 
+function inflateMorphologies(
+  source: Record<string, { findings: Record<string, { leaflets: string[]; detailValues: Record<string, string>; notes: string }> }> | undefined,
+): Record<ValveId, ValveMorphology> {
+  const next: Record<ValveId, ValveMorphology> = {
+    mitral: emptyMorphology(),
+    aortic: emptyMorphology(),
+    tricuspid: emptyMorphology(),
+    pulmonary: emptyMorphology(),
+  }
+
+  for (const valve of VALVES) {
+    const storedValve = source?.[valve.id]
+    if (!storedValve) continue
+    const findings: Record<string, FindingDetail> = {}
+    for (const [findingKey, findingValue] of Object.entries(storedValve.findings ?? {})) {
+      findings[findingKey] = {
+        leaflets: new Set(findingValue.leaflets ?? []),
+        detailValues: { ...(findingValue.detailValues ?? {}) },
+        notes: findingValue.notes ?? '',
+      }
+    }
+    next[valve.id] = { findings }
+  }
+
+  return next
+}
+
+function serializeMorphologies(
+  source: Record<ValveId, ValveMorphology>,
+): Record<string, { findings: Record<string, { leaflets: string[]; detailValues: Record<string, string>; notes: string }> }> {
+  const next: Record<string, { findings: Record<string, { leaflets: string[]; detailValues: Record<string, string>; notes: string }> }> = {}
+  for (const valve of VALVES) {
+    const valveMorphology = source[valve.id]
+    const findings: Record<string, { leaflets: string[]; detailValues: Record<string, string>; notes: string }> = {}
+    for (const [findingKey, findingValue] of Object.entries(valveMorphology.findings)) {
+      findings[findingKey] = {
+        leaflets: Array.from(findingValue.leaflets),
+        detailValues: { ...findingValue.detailValues },
+        notes: findingValue.notes,
+      }
+    }
+    next[valve.id] = { findings }
+  }
+  return next
+}
+
+type ValveSummaryState = {
+  llmProse: string | null
+  llmProseSourceSignature: string | null
+}
+
+function inflateValveSummaries(
+  source: Record<string, { llmProse: string | null; llmProseSourceSignature: string | null }> | undefined,
+): Record<ValveId, ValveSummaryState> {
+  return {
+    mitral: {
+      llmProse: source?.mitral?.llmProse ?? null,
+      llmProseSourceSignature: source?.mitral?.llmProseSourceSignature ?? null,
+    },
+    aortic: {
+      llmProse: source?.aortic?.llmProse ?? null,
+      llmProseSourceSignature: source?.aortic?.llmProseSourceSignature ?? null,
+    },
+    tricuspid: {
+      llmProse: source?.tricuspid?.llmProse ?? null,
+      llmProseSourceSignature: source?.tricuspid?.llmProseSourceSignature ?? null,
+    },
+    pulmonary: {
+      llmProse: source?.pulmonary?.llmProse ?? null,
+      llmProseSourceSignature: source?.pulmonary?.llmProseSourceSignature ?? null,
+    },
+  }
+}
+
+function serializeValveSummaries(
+  source: Record<ValveId, ValveSummaryState>,
+): Record<string, ValveSummaryState> {
+  return {
+    mitral: { ...source.mitral },
+    aortic: { ...source.aortic },
+    tricuspid: { ...source.tricuspid },
+    pulmonary: { ...source.pulmonary },
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Severity grading (ASE 2017 / ACC 2020)
 // ---------------------------------------------------------------------------
-
-type Severity = 'none' | 'trivial' | 'mild' | 'moderate' | 'severe'
-
-const SEVERITY_LABELS: Record<Severity, string> = {
-  none: 'None',
-  trivial: 'Trivial',
-  mild: 'Mild',
-  moderate: 'Moderate',
-  severe: 'Severe',
-}
-
-const SEVERITY_COLORS: Record<Severity, string> = {
-  none: 'hsl(164 40% 45%)',
-  trivial: 'hsl(164 35% 50%)',
-  mild: 'hsl(45 85% 58%)',
-  moderate: 'hsl(30 75% 50%)',
-  severe: 'hsl(3 55% 48%)',
-}
-
-/** RF% severity thresholds — single source of truth for gauge zones and auto-grading.
- *  Based on SCMR/ASE valve regurgitation grading guidelines. */
-const RF_SEVERITY_THRESHOLDS = [
-  { lo: 0, hi: 5, grade: 'none' as Severity },
-  { lo: 5, hi: 10, grade: 'trivial' as Severity },
-  { lo: 10, hi: 20, grade: 'mild' as Severity },
-  { lo: 20, hi: 40, grade: 'moderate' as Severity },
-  { lo: 40, hi: Infinity, grade: 'severe' as Severity },
-]
-
-function rfToSeverity(rf: number): Severity {
-  for (const t of RF_SEVERITY_THRESHOLDS) {
-    if (rf < t.hi) return t.grade
-  }
-  return 'severe'
-}
 
 function autoGradeSeverity(values: Record<string, string>): Severity | null {
   const rv = parseFloat(values.regurgitantVolume ?? '')
@@ -629,10 +716,10 @@ function MorphologyPanel({ valveId, morphology, onChange }: {
           <table className="w-full table-fixed text-xs">
             <thead>
               <tr className="border-b border-border/30 bg-muted/30">
-                <th style={{ width: '19%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Finding</th>
-                <th style={{ width: '20%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Leaflet(s)</th>
-                <th style={{ width: '30%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Detail</th>
-                <th style={{ width: '31%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Notes</th>
+                <th style={{ width: '16%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Finding</th>
+                <th style={{ width: '17%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Leaflet(s)</th>
+                <th style={{ width: '42%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Detail</th>
+                <th style={{ width: '25%' }} className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Notes</th>
               </tr>
             </thead>
             <tbody>
@@ -649,9 +736,10 @@ function MorphologyPanel({ valveId, morphology, onChange }: {
                     {/* Leaflet involvement */}
                     <td className="px-3 py-2 align-top">
                       {showLeaflets ? (
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1">
                           {leafletNames.map((name) => {
                             const active = detail.leaflets.has(name)
+                            const displayName = LEAFLET_DISPLAY_NAMES[valveId]?.[name] ?? name
                             return (
                               <button
                                 key={name}
@@ -664,7 +752,7 @@ function MorphologyPanel({ valveId, morphology, onChange }: {
                                     : 'ring-1 ring-border/40 text-muted-foreground/70 hover:text-foreground hover:ring-foreground/20',
                                 )}
                               >
-                                {name}
+                                {displayName}
                               </button>
                             )
                           })}
@@ -677,11 +765,11 @@ function MorphologyPanel({ valveId, morphology, onChange }: {
                     {/* Finding-specific detail fields */}
                     <td className="px-3 py-2 align-top">
                       {f.details && f.details.length > 0 ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {f.details.map((d) => {
                             if (d.type === 'select') {
                               return (
-                                <div key={d.label} className="flex items-center gap-1.5">
+                                <div key={d.label} className="flex flex-wrap items-center gap-1.5">
                                   {d.options!.map((opt) => {
                                     const isActive = detail.detailValues[d.label] === opt.value
                                     return (
@@ -1016,7 +1104,12 @@ function FlowPanel({ valve, values, derivedKeys, autoSeverity, manualSeverity, m
 // ---------------------------------------------------------------------------
 
 export function CmrValvesPage() {
-  const [selectedValve, setSelectedValve] = useState<ValveId | null>(null)
+  const activeCase = useCmrCaseStore((state) => state.activeCase)
+  const patchActiveCasePayload = useCmrCaseStore((state) => state.patchActiveCasePayload)
+  const initialValves = activeCase?.payload.valves
+  const [selectedValve, setSelectedValve] = useState<ValveId | null>(
+    () => (initialValves?.selectedValve as ValveId | null | undefined) ?? null,
+  )
 
   // Read extracted values from shared report store
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
@@ -1025,27 +1118,58 @@ export function CmrValvesPage() {
     if (extraction?.measurements) {
       for (const m of extraction.measurements) map.set(m.parameter, m.value)
     }
-    return map
+    return normalizeValveMeasurementMap(map)
   }, [extraction])
+  const heartRate = extraction?.demographics?.heart_rate ?? undefined
 
   // Derived (calculated) values — indirect volumetric method
   const derivedValues = useMemo(() => {
     const derived = new Map<string, number>()
     const lvsv = extractedValues.get('LV SV')
     const rvsv = extractedValues.get('RV SV')
-    const avEff = extractedValues.get('AV effective forward flow (per heartbeat)')
-    const pvEff = extractedValues.get('PV effective forward flow (per heartbeat)')
+    const avEff = getEffectiveForwardFlow({
+      measurements: extractedValues,
+      effectiveBeatKeys: ['AV effective forward flow (per heartbeat)'],
+      effectiveMinuteKeys: ['AV effective forward flow (per minute)'],
+      forwardBeatKeys: ['AV forward flow (per heartbeat)'],
+      forwardMinuteKeys: ['AV forward flow (per minute)'],
+      backwardBeatKeys: ['AV backward flow (per heartbeat)'],
+      backwardMinuteKeys: ['AV backward flow (per minute)'],
+      regurgitantFractionKeys: ['AV regurgitant fraction'],
+      heartRate,
+    })
+    const pvEff = getEffectiveForwardFlow({
+      measurements: extractedValues,
+      effectiveBeatKeys: ['PV effective forward flow (per heartbeat)'],
+      effectiveMinuteKeys: ['PV effective forward flow (per minute)'],
+      forwardBeatKeys: ['PV forward flow (per heartbeat)'],
+      forwardMinuteKeys: ['PV forward flow (per minute)'],
+      backwardBeatKeys: ['PV backward flow (per heartbeat)'],
+      backwardMinuteKeys: ['PV backward flow (per minute)'],
+      regurgitantFractionKeys: ['PV regurgitant fraction'],
+      heartRate,
+    })
 
-    if (lvsv !== undefined && avEff !== undefined && !extractedValues.has('MR volume (per heartbeat)')) {
-      const mrVol = lvsv - avEff
+    if (!extractedValues.has('AV effective forward flow (per heartbeat)') && avEff !== undefined) {
+      derived.set('AV effective forward flow (per heartbeat)', Math.round(avEff * 10) / 10)
+    }
+    if (!extractedValues.has('PV effective forward flow (per heartbeat)') && pvEff !== undefined) {
+      derived.set('PV effective forward flow (per heartbeat)', Math.round(pvEff * 10) / 10)
+    }
+
+    const effectiveAvEff = extractedValues.get('AV effective forward flow (per heartbeat)') ?? avEff
+    const effectivePvEff = extractedValues.get('PV effective forward flow (per heartbeat)') ?? pvEff
+
+    if (lvsv !== undefined && effectiveAvEff !== undefined && !extractedValues.has('MR volume (per heartbeat)')) {
+      const mrVol = lvsv - effectiveAvEff
       if (mrVol >= 0) {
         derived.set('MR volume (per heartbeat)', Math.round(mrVol * 10) / 10)
         if (lvsv > 0) derived.set('MR regurgitant fraction', Math.round((mrVol / lvsv) * 1000) / 10)
       }
     }
 
-    if (rvsv !== undefined && pvEff !== undefined && !extractedValues.has('TR volume (per heartbeat)')) {
-      const trVol = rvsv - pvEff
+    if (rvsv !== undefined && effectivePvEff !== undefined && !extractedValues.has('TR volume (per heartbeat)')) {
+      const trVol = rvsv - effectivePvEff
       if (trVol >= 0) {
         derived.set('TR volume (per heartbeat)', Math.round(trVol * 10) / 10)
         if (rvsv > 0) derived.set('TR regurgitant fraction', Math.round((trVol / rvsv) * 1000) / 10)
@@ -1053,7 +1177,7 @@ export function CmrValvesPage() {
     }
 
     return derived
-  }, [extractedValues])
+  }, [extractedValues, heartRate])
 
   // Manual severity overrides per valve (null = use auto)
   const [manualSeverity] = useState<Record<ValveId, Severity | null>>({
@@ -1065,14 +1189,184 @@ export function CmrValvesPage() {
 
   // Morphology findings per valve
   const [morphologies, setMorphologies] = useState<Record<ValveId, ValveMorphology>>({
-    mitral: emptyMorphology(),
-    aortic: emptyMorphology(),
-    tricuspid: emptyMorphology(),
-    pulmonary: emptyMorphology(),
+    ...inflateMorphologies(initialValves?.morphologies),
   })
+  const [summaries, setSummaries] = useState<Record<ValveId, ValveSummaryState>>({
+    ...inflateValveSummaries(initialValves?.summaries),
+  })
+  const [isGeneratingMitralSummary, setIsGeneratingMitralSummary] = useState(false)
+  const [mitralSummaryError, setMitralSummaryError] = useState<string | null>(null)
+  const [isGeneratingAorticSummary, setIsGeneratingAorticSummary] = useState(false)
+  const [aorticSummaryError, setAorticSummaryError] = useState<string | null>(null)
+  const [isGeneratingTricuspidSummary, setIsGeneratingTricuspidSummary] = useState(false)
+  const [tricuspidSummaryError, setTricuspidSummaryError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const nextValves = activeCase?.payload.valves
+    setSelectedValve((nextValves?.selectedValve as ValveId | null | undefined) ?? null)
+    setMorphologies({
+      ...inflateMorphologies(nextValves?.morphologies),
+    })
+    setSummaries({
+      ...inflateValveSummaries(nextValves?.summaries),
+    })
+    setIsGeneratingMitralSummary(false)
+    setMitralSummaryError(null)
+    setIsGeneratingAorticSummary(false)
+    setAorticSummaryError(null)
+    setIsGeneratingTricuspidSummary(false)
+    setTricuspidSummaryError(null)
+  }, [activeCase?.id])
+
+  useEffect(() => {
+    patchActiveCasePayload((payload) => ({
+      ...payload,
+      valves: {
+        selectedValve,
+        morphologies: serializeMorphologies(morphologies),
+        summaries: serializeValveSummaries(summaries),
+      },
+    }))
+  }, [morphologies, patchActiveCasePayload, selectedValve, summaries])
 
   const handleMorphologyChange = useCallback((valveId: ValveId, m: ValveMorphology) => {
     setMorphologies((prev) => ({ ...prev, [valveId]: m }))
+  }, [])
+
+  const summaryMeasurementMap = useMemo(() => {
+    const next = new Map<string, number>(extractedValues)
+    for (const [key, value] of derivedValues.entries()) {
+      if (!next.has(key)) {
+        next.set(key, value)
+      }
+    }
+    return next
+  }, [derivedValues, extractedValues])
+
+  const mitralSummaryData = useMemo(
+    () => buildMitralValveSummaryData(summaryMeasurementMap, morphologies.mitral),
+    [morphologies, summaryMeasurementMap],
+  )
+  const mitralSummarySignature = useMemo(
+    () => buildMitralValveSummarySignature(mitralSummaryData),
+    [mitralSummaryData],
+  )
+  const mitralSummary = summaries.mitral
+  const isMitralSummaryStale = mitralSummary.llmProse !== null
+    && mitralSummary.llmProseSourceSignature !== mitralSummarySignature
+
+  const aorticSummaryData = useMemo(
+    () => buildAorticValveSummaryData(summaryMeasurementMap, morphologies.aortic),
+    [morphologies, summaryMeasurementMap],
+  )
+  const aorticSummarySignature = useMemo(
+    () => buildAorticValveSummarySignature(aorticSummaryData),
+    [aorticSummaryData],
+  )
+  const aorticSummary = summaries.aortic
+  const isAorticSummaryStale = aorticSummary.llmProse !== null
+    && aorticSummary.llmProseSourceSignature !== aorticSummarySignature
+
+  const tricuspidSummaryData = useMemo(
+    () => buildTricuspidValveSummaryData(summaryMeasurementMap, morphologies.tricuspid),
+    [morphologies, summaryMeasurementMap],
+  )
+  const tricuspidSummarySignature = useMemo(
+    () => buildTricuspidValveSummarySignature(tricuspidSummaryData),
+    [tricuspidSummaryData],
+  )
+  const tricuspidSummary = summaries.tricuspid
+  const isTricuspidSummaryStale = tricuspidSummary.llmProse !== null
+    && tricuspidSummary.llmProseSourceSignature !== tricuspidSummarySignature
+
+  const handleGenerateMitralSummary = useCallback(async () => {
+    setIsGeneratingMitralSummary(true)
+    setMitralSummaryError(null)
+    try {
+      const prose = await generateCmrMitralValveProse(mitralSummaryData)
+      setSummaries((prev) => ({
+        ...prev,
+        mitral: {
+          llmProse: prose,
+          llmProseSourceSignature: mitralSummarySignature,
+        },
+      }))
+    } catch (error) {
+      setMitralSummaryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsGeneratingMitralSummary(false)
+    }
+  }, [mitralSummaryData, mitralSummarySignature])
+
+  const clearMitralSummary = useCallback(() => {
+    setSummaries((prev) => ({
+      ...prev,
+      mitral: {
+        llmProse: null,
+        llmProseSourceSignature: null,
+      },
+    }))
+    setMitralSummaryError(null)
+  }, [])
+
+  const handleGenerateAorticSummary = useCallback(async () => {
+    setIsGeneratingAorticSummary(true)
+    setAorticSummaryError(null)
+    try {
+      const prose = await generateCmrAorticValveProse(aorticSummaryData)
+      setSummaries((prev) => ({
+        ...prev,
+        aortic: {
+          llmProse: prose,
+          llmProseSourceSignature: aorticSummarySignature,
+        },
+      }))
+    } catch (error) {
+      setAorticSummaryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsGeneratingAorticSummary(false)
+    }
+  }, [aorticSummaryData, aorticSummarySignature])
+
+  const clearAorticSummary = useCallback(() => {
+    setSummaries((prev) => ({
+      ...prev,
+      aortic: {
+        llmProse: null,
+        llmProseSourceSignature: null,
+      },
+    }))
+    setAorticSummaryError(null)
+  }, [])
+
+  const handleGenerateTricuspidSummary = useCallback(async () => {
+    setIsGeneratingTricuspidSummary(true)
+    setTricuspidSummaryError(null)
+    try {
+      const prose = await generateCmrTricuspidValveProse(tricuspidSummaryData)
+      setSummaries((prev) => ({
+        ...prev,
+        tricuspid: {
+          llmProse: prose,
+          llmProseSourceSignature: tricuspidSummarySignature,
+        },
+      }))
+    } catch (error) {
+      setTricuspidSummaryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsGeneratingTricuspidSummary(false)
+    }
+  }, [tricuspidSummaryData, tricuspidSummarySignature])
+
+  const clearTricuspidSummary = useCallback(() => {
+    setSummaries((prev) => ({
+      ...prev,
+      tricuspid: {
+        llmProse: null,
+        llmProseSourceSignature: null,
+      },
+    }))
+    setTricuspidSummaryError(null)
   }, [])
 
   // Resolve values for a valve: override → extracted → derived → empty
@@ -1144,6 +1438,196 @@ export function CmrValvesPage() {
           />
         )
       })()}
-    </Stack>
-  )
-}
+
+        {selectedValve === 'mitral' && (
+          <section className="rounded-xl border border-border/50 bg-card">
+            <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
+              <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
+              <h3 className="flex-1 text-sm font-semibold text-foreground">Mitral summary</h3>
+            {mitralSummaryData.severityLabel && mitralSummaryData.severity !== 'none' && (
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70">
+                {mitralSummaryData.severityLabel.toUpperCase()} MR
+              </span>
+            )}
+            {mitralSummaryData.primaryMechanismLabel && (
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-700))] bg-[hsl(var(--tone-neutral-100))]">
+                {mitralSummaryData.primaryMechanismLabel}
+              </span>
+            )}
+          </div>
+          <div className="p-5">
+            {mitralSummary.llmProse !== null && (
+              <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                {mitralSummary.llmProse}
+              </p>
+            )}
+
+            {mitralSummaryError && (
+              <p className="mt-2 text-xs text-red-500">{mitralSummaryError}</p>
+            )}
+
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                disabled={isGeneratingMitralSummary}
+                onClick={handleGenerateMitralSummary}
+                className={cn(
+                  'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+                  'bg-foreground text-background hover:bg-foreground/90',
+                  'disabled:opacity-40 disabled:cursor-not-allowed',
+                )}
+              >
+                {isGeneratingMitralSummary
+                  ? 'Generating...'
+                  : mitralSummary.llmProse !== null
+                    ? isMitralSummaryStale
+                      ? 'Regenerate Summary (Stale)'
+                      : 'Regenerate Summary'
+                    : 'Generate Summary'}
+              </button>
+              {mitralSummary.llmProse !== null && (
+                <button
+                  type="button"
+                  onClick={clearMitralSummary}
+                  className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
+                >
+                  Clear
+                </button>
+              )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {selectedValve === 'aortic' && (
+          <section className="rounded-xl border border-border/50 bg-card">
+            <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
+              <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
+              <h3 className="flex-1 text-sm font-semibold text-foreground">Aortic summary</h3>
+              {aorticSummaryData.phenotype === 'mixed' && (
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70">
+                  MIXED
+                </span>
+              )}
+              {aorticSummaryData.phenotype === 'stenosis' && aorticSummaryData.stenosisSeverityLabel && (
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70">
+                  {aorticSummaryData.stenosisSeverityLabel.toUpperCase()} AS
+                </span>
+              )}
+              {aorticSummaryData.phenotype === 'regurgitation' && aorticSummaryData.regurgitationSeverityLabel && aorticSummaryData.regurgitationSeverity !== 'none' && (
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70">
+                  {aorticSummaryData.regurgitationSeverityLabel.toUpperCase()} AR
+                </span>
+              )}
+              {aorticSummaryData.primaryMechanismLabel && (
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-700))] bg-[hsl(var(--tone-neutral-100))]">
+                  {aorticSummaryData.primaryMechanismLabel}
+                </span>
+              )}
+            </div>
+            <div className="p-5">
+              {aorticSummary.llmProse !== null && (
+                <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                  {aorticSummary.llmProse}
+                </p>
+              )}
+
+              {aorticSummaryError && (
+                <p className="mt-2 text-xs text-red-500">{aorticSummaryError}</p>
+              )}
+
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isGeneratingAorticSummary}
+                  onClick={handleGenerateAorticSummary}
+                  className={cn(
+                    'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+                    'bg-foreground text-background hover:bg-foreground/90',
+                    'disabled:opacity-40 disabled:cursor-not-allowed',
+                  )}
+                >
+                  {isGeneratingAorticSummary
+                    ? 'Generating...'
+                    : aorticSummary.llmProse !== null
+                      ? isAorticSummaryStale
+                        ? 'Regenerate Summary (Stale)'
+                        : 'Regenerate Summary'
+                      : 'Generate Summary'}
+                </button>
+                {aorticSummary.llmProse !== null && (
+                  <button
+                    type="button"
+                    onClick={clearAorticSummary}
+                    className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {selectedValve === 'tricuspid' && (
+          <section className="rounded-xl border border-border/50 bg-card">
+            <div className="flex items-center gap-3 border-b border-border/30 px-5 py-3.5">
+              <SectionMarker tone="report" size="title" className="self-stretch h-auto" />
+              <h3 className="flex-1 text-sm font-semibold text-foreground">Tricuspid summary</h3>
+              {tricuspidSummaryData.severityLabel && tricuspidSummaryData.severity !== 'none' && (
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-white bg-foreground/70">
+                  {tricuspidSummaryData.severityLabel.toUpperCase()} TR
+                </span>
+              )}
+              {tricuspidSummaryData.primaryMechanismLabel && (
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-700))] bg-[hsl(var(--tone-neutral-100))]">
+                  {tricuspidSummaryData.primaryMechanismLabel}
+                </span>
+              )}
+            </div>
+            <div className="p-5">
+              {tricuspidSummary.llmProse !== null && (
+                <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                  {tricuspidSummary.llmProse}
+                </p>
+              )}
+
+              {tricuspidSummaryError && (
+                <p className="mt-2 text-xs text-red-500">{tricuspidSummaryError}</p>
+              )}
+
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isGeneratingTricuspidSummary}
+                  onClick={handleGenerateTricuspidSummary}
+                  className={cn(
+                    'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+                    'bg-foreground text-background hover:bg-foreground/90',
+                    'disabled:opacity-40 disabled:cursor-not-allowed',
+                  )}
+                >
+                  {isGeneratingTricuspidSummary
+                    ? 'Generating...'
+                    : tricuspidSummary.llmProse !== null
+                      ? isTricuspidSummaryStale
+                        ? 'Regenerate Summary (Stale)'
+                        : 'Regenerate Summary'
+                      : 'Generate Summary'}
+                </button>
+                {tricuspidSummary.llmProse !== null && (
+                  <button
+                    type="button"
+                    onClick={clearTricuspidSummary}
+                    className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 hover:bg-red-50 hover:text-red-700 transition-all"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+      </Stack>
+    )
+  }

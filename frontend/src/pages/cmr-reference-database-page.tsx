@@ -238,6 +238,8 @@ function ParameterEditor({
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [editHistory, setEditHistory] = useState<Array<{ edits: Record<string, string>; metaDirty: boolean; metaUnit: string; metaSection: string; metaSubSection: string; metaIndexed: string; metaDirection: string; metaPapAffected: boolean; metaNestedUnder: string; metaDecimalPlaces: string; metaSeverityLabel: string; metaSeverityThresholds: { mild: string; moderate: string; severe: string }; metaSeverityOverrides: { mild: string; moderate: string; severe: string } }>>([])
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Metadata state — editable fields
@@ -466,6 +468,8 @@ function ParameterEditor({
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
+    setSaveFeedback(null)
     try {
       // Save range edits
       const updateMap = new Map<string, CmrReferenceRangeUpdate>()
@@ -525,8 +529,9 @@ function ParameterEditor({
       setEdits({})
       setMetaDirty(false)
       setEditHistory([])
-    } catch {
-      // ignore
+      setSaveFeedback('Changes saved.')
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Failed to save changes.')
     } finally {
       setSaving(false)
     }
@@ -540,6 +545,12 @@ function ParameterEditor({
 
   const rangeDirtyCount = Object.keys(edits).length
   const totalDirtyCount = rangeDirtyCount + (metaDirty ? 1 : 0)
+
+  useEffect(() => {
+    if (totalDirtyCount > 0) {
+      setSaveFeedback(null)
+    }
+  }, [totalDirtyCount])
 
   return (
     <div className="space-y-4">
@@ -621,6 +632,13 @@ function ParameterEditor({
           {saving ? 'Saving...' : isNew ? 'Create Parameter' : 'Save Changes'}
         </button>
       </div>
+
+      {saveError ? (
+        <p className="text-sm font-medium text-[hsl(var(--tone-danger-700))]">{saveError}</p>
+      ) : null}
+      {saveFeedback ? (
+        <p className="text-sm font-medium text-[hsl(var(--tone-positive-700))]">{saveFeedback}</p>
+      ) : null}
 
       {loading ? (
         <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">Loading...</p>

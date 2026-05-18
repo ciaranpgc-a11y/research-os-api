@@ -52,6 +52,8 @@ export type PublicationCollectionSummary = {
   id: string
   name: string
   colour: CollectionColour
+  subcollection_id?: string | null
+  subcollection_name?: string | null
 }
 
 export type PublicationCollectionsBatchEntry = {

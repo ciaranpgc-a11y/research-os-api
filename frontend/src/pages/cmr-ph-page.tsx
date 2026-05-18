@@ -4,7 +4,19 @@ import { ExternalLink } from 'lucide-react'
 import { SectionMarker } from '@/components/patterns'
 import { DrilldownSheet, PageHeader, Row, Stack } from '@/components/primitives'
 import type { CmrCanonicalParam, CmrCanonicalTableResponse } from '@/lib/cmr-api'
-import { fetchReferenceParameters } from '@/lib/cmr-api'
+import { fetchConfig, fetchReferenceParameters } from '@/lib/cmr-api'
+import {
+  applyCmrReferencePreset,
+  normalizeCmrReferencePreset,
+  type CmrReferencePreset,
+} from '@/lib/cmr-reference-presets'
+import {
+  buildPhSummaryData,
+  buildPhSummarySignature,
+  normalizePhRegurgitationChoice,
+  type PhSummaryChoices,
+} from '@/lib/cmr-ph-summary'
+import { rangeParamMapToRecord, rangeParamRecordToMap } from '@/lib/cmr-case-defaults'
 import {
   computeMeasuredPos,
   computeMeasuredRel,
@@ -17,8 +29,15 @@ import {
   type RangeParam,
 } from '@/lib/cmr-chart-scaling'
 import { getExtractionResult, subscribeExtractionResult } from '@/lib/cmr-report-store'
+import { generateCmrPhProse } from '@/lib/cmr-summary-api'
 import { computeSeverity, inferSeverityLabel, type SeverityLabelType, type SeverityResult } from '@/lib/cmr-severity'
 import { cn } from '@/lib/utils'
+import {
+  type RegurgitationSeverity as ValveRfSeverity,
+  REGURGITATION_SEVERITY_LABELS,
+  rfToRegurgitationSeverity,
+} from '@/lib/cmr-valve-severity'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 
 type NumericKey =
   | 'rvEdv'
@@ -63,6 +82,7 @@ type NumericKey =
   | 'mainPaNetFlow'
   | 'rpaNetFlow'
   | 'lpaNetFlow'
+  | 'vortexDurationPercent'
   | 'rpaPercent'
   | 'lpaPercent'
 
@@ -81,9 +101,11 @@ type SeptalMotion = 'normal' | 'paradoxical' | 'dyskinetic' | 'not-assessed'
 type InteratrialBowing = 'none' | 'toward-la' | 'toward-ra' | 'bidirectional' | 'not-assessed'
 type PericardialEffusion = 'none' | 'small' | 'moderate' | 'large'
 type VenaCavaState = 'normal' | 'dilated' | 'not-assessed'
-type RegurgitationSeverity = 'none' | 'trace' | 'mild' | 'moderate' | 'severe'
+type RegurgitationSeverity = ValveRfSeverity
 type PresenceState = 'not-assessed' | 'absent' | 'present'
 type AdvancedSeverity = 'mild' | 'moderate' | 'marked'
+type VortexLocation = 'not-specified' | 'main-pa' | 'main-pa-rpa' | 'main-pa-lpa' | 'branch-only' | 'diffuse-proximal-pa'
+type HelicalFlowLocation = 'not-specified' | 'rvot-mpa' | 'central-mpa' | 'rpa' | 'lpa' | 'diffuse-proximal-pa'
 
 type ChoiceState = {
   septalFlattening: SeptalFlattening
@@ -96,8 +118,10 @@ type ChoiceState = {
   prSeverity: RegurgitationSeverity
   vortexFormation: PresenceState
   vortexSeverity: AdvancedSeverity | null
+  vortexLocation: VortexLocation
   helicity: PresenceState
   helicitySeverity: AdvancedSeverity | null
+  helicityLocation: HelicalFlowLocation
 }
 
 type TextState = {
@@ -106,11 +130,24 @@ type TextState = {
   flowComment: string
 }
 
+type PhSectionId =
+  | 'summary'
+  | 'rv'
+  | 'signs'
+  | 'pa-flow'
+  | 'valves'
+  | '4d-flow'
+
 type QuantitativeDisplayRow = {
   key: NumericKey
   field: NumericFieldDef
   value: number | null
   canonical: CmrCanonicalParam | null
+}
+
+type ValveDetailCardMetric = {
+  label: string
+  value: string
 }
 
 const NUMERIC_FIELDS: Record<NumericKey, NumericFieldDef> = {
@@ -156,6 +193,7 @@ const NUMERIC_FIELDS: Record<NumericKey, NumericFieldDef> = {
   mainPaNetFlow: { key: 'mainPaNetFlow', label: 'Main PA net flow', unit: 'mL/beat', decimals: 0 },
   rpaNetFlow: { key: 'rpaNetFlow', label: 'RPA net flow', unit: 'mL/beat', decimals: 0 },
   lpaNetFlow: { key: 'lpaNetFlow', label: 'LPA net flow', unit: 'mL/beat', decimals: 0 },
+  vortexDurationPercent: { key: 'vortexDurationPercent', label: 'Vortex duration', unit: '% cycle', decimals: 0 },
   rpaPercent: { key: 'rpaPercent', label: 'RPA %', unit: '%', decimals: 0 },
   lpaPercent: { key: 'lpaPercent', label: 'LPA %', unit: '%', decimals: 0 },
 }
@@ -163,8 +201,6 @@ const NUMERIC_FIELDS: Record<NumericKey, NumericFieldDef> = {
 const RV_QUANT_KEYS: NumericKey[] = ['rvEdv', 'rvEdvi', 'rvEsv', 'rvEsvi', 'rvSv', 'rvSvi', 'rvEf', 'rvMass', 'rvMassIndex', 'rvCo', 'rvCi', 'raMaxVolume', 'raMaxVolumeIndex', 'lvEdvi', 'lvSvi', 'tapse']
 const PA_QUANT_KEYS: NumericKey[] = ['mainPaDiameter', 'mainPaSystolicArea', 'mainPaDiastolicArea', 'paRelativeAreaChange', 'paDistensibility', 'rpaDiameter', 'lpaDiameter', 'pvEffectiveForwardFlow', 'pvForwardFlow', 'pvBackwardFlow', 'pvRegurgitantFraction', 'peakVelocity', 'maxPressureGradient', 'meanPressureGradient']
 const VALVE_QUANT_KEYS: NumericKey[] = ['trRegurgitantFraction', 'trRegurgitantVolume', 'mrRegurgitantFraction', 'mrRegurgitantVolume']
-const ADDITIONAL_QUANT_KEYS: NumericKey[] = ['rvLvVolumeRatio', 'rpaDistension', 'lpaDistension']
-
 const SEPTAL_FLATTENING_OPTIONS: Option<SeptalFlattening>[] = [
   { value: 'none', label: 'None' },
   { value: 'systolic', label: 'Systolic' },
@@ -200,9 +236,9 @@ const VENA_CAVA_OPTIONS: Option<VenaCavaState>[] = [
   { value: 'not-assessed', label: 'Not assessed' },
 ]
 
-const REGURGITATION_OPTIONS: Option<RegurgitationSeverity>[] = [
+const REGURGITATION_SEVERITY_OPTIONS: Option<RegurgitationSeverity>[] = [
   { value: 'none', label: 'None' },
-  { value: 'trace', label: 'Trace' },
+  { value: 'trivial', label: 'Trace' },
   { value: 'mild', label: 'Mild' },
   { value: 'moderate', label: 'Moderate' },
   { value: 'severe', label: 'Severe' },
@@ -220,10 +256,76 @@ const ADVANCED_SEVERITY_OPTIONS: Option<AdvancedSeverity>[] = [
   { value: 'marked', label: 'Marked' },
 ]
 
+const VORTEX_LOCATION_OPTIONS: Option<VortexLocation>[] = [
+  { value: 'main-pa', label: 'MPA' },
+  { value: 'main-pa-rpa', label: 'MPA -> RPA' },
+  { value: 'main-pa-lpa', label: 'MPA -> LPA' },
+  { value: 'branch-only', label: 'Branch only' },
+  { value: 'diffuse-proximal-pa', label: 'Diffuse' },
+  { value: 'not-specified', label: 'Unspecified' },
+]
+
+const HELICAL_FLOW_LOCATION_OPTIONS: Option<HelicalFlowLocation>[] = [
+  { value: 'rvot-mpa', label: 'RVOT-MPA' },
+  { value: 'central-mpa', label: 'MPA' },
+  { value: 'rpa', label: 'RPA' },
+  { value: 'lpa', label: 'LPA' },
+  { value: 'diffuse-proximal-pa', label: 'Diffuse' },
+  { value: 'not-specified', label: 'Unspecified' },
+]
+
+const PH_SECTION_TILES: Array<{ id: PhSectionId; title: string }> = [
+  { id: 'summary', title: 'PH summary' },
+  { id: 'rv', title: 'RV size & function' },
+  { id: 'signs', title: 'Septal / right heart signs' },
+  { id: 'pa-flow', title: 'Pulmonary artery & flow' },
+  { id: 'valves', title: 'Valvular context' },
+  { id: '4d-flow', title: '4D Flow' },
+]
+
+function normalizePhSectionId(value: unknown): PhSectionId {
+  if (value === 'summary' || value === 'rv' || value === 'signs' || value === 'pa-flow' || value === 'valves' || value === '4d-flow') {
+    return value
+  }
+  return 'rv'
+}
+
 function parseNumber(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined || value === '') return null
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeStoredRegurgitationSeverity(value: unknown): RegurgitationSeverity {
+  return normalizePhRegurgitationChoice(value as RegurgitationSeverity | 'trace' | null | undefined) ?? 'none'
+}
+
+function normalizeStoredVortexLocation(value: unknown): VortexLocation {
+  switch (value) {
+    case 'main-pa':
+    case 'main-pa-rpa':
+    case 'main-pa-lpa':
+    case 'branch-only':
+    case 'diffuse-proximal-pa':
+    case 'not-specified':
+      return value
+    default:
+      return 'not-specified'
+  }
+}
+
+function normalizeStoredHelicalFlowLocation(value: unknown): HelicalFlowLocation {
+  switch (value) {
+    case 'rvot-mpa':
+    case 'central-mpa':
+    case 'rpa':
+    case 'lpa':
+    case 'diffuse-proximal-pa':
+    case 'not-specified':
+      return value
+    default:
+      return 'not-specified'
+  }
 }
 
 function round(value: number, decimals: number): number {
@@ -301,6 +403,100 @@ function Subsection({ title, children, className }: { title: string; children: R
       {children}
     </div>
   )
+}
+
+function SectionNavTile({
+  title,
+  selected,
+  onClick,
+}: {
+  title: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'group relative flex min-h-[104px] flex-col items-start justify-between rounded-xl border p-4 text-left transition-all',
+        'hover:shadow-md hover:border-foreground/20',
+        selected
+          ? 'border-foreground/30 bg-muted/60 shadow-sm'
+          : 'border-border/50 bg-card',
+      )}
+    >
+      <span
+        className={cn(
+          'h-1.5 w-10 rounded-full transition-colors',
+          selected ? 'bg-[hsl(var(--section-style-report-accent))]' : 'bg-[hsl(var(--tone-neutral-200))]',
+        )}
+      />
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold text-foreground">{title}</span>
+      </div>
+    </button>
+  )
+}
+
+function ValveDetailCard({
+  title,
+  metrics,
+  severity,
+  severityLabel,
+  emptyText = 'No valve-specific values available.',
+}: {
+  title: string
+  metrics: ValveDetailCardMetric[]
+  severity?: ValveRfSeverity | null
+  severityLabel?: string | null
+  emptyText?: string
+}) {
+  const resolvedSeverityLabel =
+    severityLabel ?? (severity == null ? null : REGURGITATION_SEVERITY_LABELS[severity])
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-background/60 p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <FieldLabel>{title}</FieldLabel>
+        {resolvedSeverityLabel && (
+          <span
+            className={cn(
+              'rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+              severity === 'none' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
+              severity === 'trivial' && 'bg-[hsl(162_22%_90%)] text-[hsl(164_30%_28%)] ring-[hsl(163_22%_80%)]',
+              severity === 'mild' && 'bg-[hsl(38_40%_90%)] text-[hsl(34_50%_35%)] ring-[hsl(36_36%_80%)]',
+              severity === 'moderate' && 'bg-[hsl(16_45%_86%)] text-[hsl(5_48%_32%)] ring-[hsl(10_32%_76%)]',
+              severity === 'severe' && 'bg-[hsl(2_52%_25%)] text-white ring-[hsl(2_52%_20%)]',
+            )}
+          >
+            {resolvedSeverityLabel}
+          </span>
+        )}
+      </div>
+      {metrics.length > 0 ? (
+        <div className="grid gap-3">
+          {metrics.map((metric) => (
+            <div key={metric.label} className="flex items-center justify-between gap-4">
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">{metric.label}</span>
+              <span className="text-sm font-semibold tabular-nums text-[hsl(var(--foreground))]">{metric.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm italic text-[hsl(var(--muted-foreground))]">{emptyText}</p>
+      )}
+    </div>
+  )
+}
+
+function buildValveSeverityPillLabel(
+  lesionLabel: 'TR' | 'MR',
+  severity: ValveRfSeverity | null | undefined,
+): string {
+  if (severity == null) return lesionLabel
+  if (severity === 'none') return `No ${lesionLabel}`
+  return `${REGURGITATION_SEVERITY_LABELS[severity]} ${lesionLabel}`
 }
 
 function MeasurementRow({
@@ -851,6 +1047,9 @@ function QuantitativeTable({
 
 export function CmrPhPage() {
   const extraction = useSyncExternalStore(subscribeExtractionResult, getExtractionResult)
+  const activeCase = useCmrCaseStore((state) => state.activeCase)
+  const patchActiveCasePayload = useCmrCaseStore((state) => state.patchActiveCasePayload)
+  const initialPh = activeCase?.payload.ph
   const demographics = extraction?.demographics ?? {}
   const sex = demographics.sex ?? 'Male'
   const age = demographics.age ?? undefined
@@ -859,42 +1058,146 @@ export function CmrPhPage() {
 
   const [referenceData, setReferenceData] = useState<CmrCanonicalTableResponse | null>(null)
   const [referenceLoading, setReferenceLoading] = useState(true)
-  const [showFilter, setShowFilter] = useState<'all' | 'recorded'>('recorded')
-  const [indexFilter, setIndexFilter] = useState<'all' | 'indexed'>('all')
-  const [abnormalFilter, setAbnormalFilter] = useState<'all' | 'abnormal'>('all')
-  const [chartMode, setChartMode] = useState<'off' | 'on'>('on')
-  const [severityMode, setSeverityMode] = useState<'off' | 'abnormal'>('off')
-  const [rangeParams, setRangeParams] = useState<Map<string, RangeParam>>(new Map())
-  const [scalingMode, setScalingMode] = useState<'factory' | 'global' | 'per-meas'>('global')
+  const [referencePreset, setReferencePreset] = useState<CmrReferencePreset>('standard')
+  const [showFilter, setShowFilter] = useState<'all' | 'recorded'>(() => initialPh?.showFilter ?? 'recorded')
+  const [indexFilter, setIndexFilter] = useState<'all' | 'indexed'>(() => initialPh?.indexFilter ?? 'all')
+  const [abnormalFilter, setAbnormalFilter] = useState<'all' | 'abnormal'>(() => initialPh?.abnormalFilter ?? 'all')
+  const [chartMode, setChartMode] = useState<'off' | 'on'>(() => initialPh?.chartMode ?? 'on')
+  const [severityMode, setSeverityMode] = useState<'off' | 'abnormal'>(() => initialPh?.severityMode ?? 'off')
+  const [rangeParams, setRangeParams] = useState<Map<string, RangeParam>>(() => rangeParamRecordToMap(initialPh?.rangeParams))
+  const [scalingMode, setScalingMode] = useState<'factory' | 'global' | 'per-meas'>(() => initialPh?.scalingMode ?? 'global')
   const [selectedRow, setSelectedRow] = useState<QuantitativeDisplayRow | null>(null)
-  const [manualNumeric, setManualNumeric] = useState<Partial<Record<NumericKey, string>>>({})
+  const [manualNumeric, setManualNumeric] = useState<Partial<Record<NumericKey, string>>>(() => initialPh?.manualNumeric as Partial<Record<NumericKey, string>> ?? {})
+  const [phSummary, setPhSummary] = useState<{ llmProse: string | null; llmProseSourceSignature: string | null }>(() => ({
+    llmProse: initialPh?.llmProse ?? null,
+    llmProseSourceSignature: initialPh?.llmProseSourceSignature ?? null,
+  }))
+  const [isGeneratingPhSummary, setIsGeneratingPhSummary] = useState(false)
+  const [phSummaryError, setPhSummaryError] = useState<string | null>(null)
 
   const [choices, setChoices] = useState<ChoiceState>({
-    septalFlattening: 'none',
-    septalMotion: 'normal',
-    interatrialSeptalBowing: 'none',
-    pericardialEffusion: 'none',
-    venaCava: 'normal',
-    trSeverity: 'none',
-    mrSeverity: 'none',
-    prSeverity: 'none',
-    vortexFormation: 'not-assessed',
-    vortexSeverity: null,
-    helicity: 'not-assessed',
-    helicitySeverity: null,
+    septalFlattening: (initialPh?.choices.septalFlattening as ChoiceState['septalFlattening'] | undefined) ?? 'none',
+    septalMotion: (initialPh?.choices.septalMotion as ChoiceState['septalMotion'] | undefined) ?? 'normal',
+    interatrialSeptalBowing: (initialPh?.choices.interatrialSeptalBowing as ChoiceState['interatrialSeptalBowing'] | undefined) ?? 'none',
+    pericardialEffusion: (initialPh?.choices.pericardialEffusion as ChoiceState['pericardialEffusion'] | undefined) ?? 'none',
+    venaCava: (initialPh?.choices.venaCava as ChoiceState['venaCava'] | undefined) ?? 'normal',
+    trSeverity: normalizeStoredRegurgitationSeverity(initialPh?.choices.trSeverity),
+    mrSeverity: normalizeStoredRegurgitationSeverity(initialPh?.choices.mrSeverity),
+    prSeverity: normalizeStoredRegurgitationSeverity(initialPh?.choices.prSeverity),
+    vortexFormation: (initialPh?.choices.vortexFormation as ChoiceState['vortexFormation'] | undefined) ?? 'not-assessed',
+    vortexSeverity: (initialPh?.choices.vortexSeverity as ChoiceState['vortexSeverity'] | undefined) ?? null,
+    vortexLocation: normalizeStoredVortexLocation(initialPh?.choices.vortexLocation),
+    helicity: (initialPh?.choices.helicity as ChoiceState['helicity'] | undefined) ?? 'not-assessed',
+    helicitySeverity: (initialPh?.choices.helicitySeverity as ChoiceState['helicitySeverity'] | undefined) ?? null,
+    helicityLocation: normalizeStoredHelicalFlowLocation(initialPh?.choices.helicityLocation),
   })
   const [texts, setTexts] = useState<TextState>({
-    ancillaryFindings: '',
-    additionalDetails: '',
-    flowComment: '',
+    ancillaryFindings: initialPh?.texts.ancillaryFindings ?? '',
+    additionalDetails: initialPh?.texts.additionalDetails ?? '',
+    flowComment: initialPh?.texts.flowComment ?? '',
   })
+  const [selectedSection, setSelectedSection] = useState<PhSectionId>(
+    () => normalizePhSectionId(initialPh?.selectedSection),
+  )
+
+  useEffect(() => {
+    const nextPh = activeCase?.payload.ph
+    setShowFilter(nextPh?.showFilter ?? 'recorded')
+    setIndexFilter(nextPh?.indexFilter ?? 'all')
+    setAbnormalFilter(nextPh?.abnormalFilter ?? 'all')
+    setChartMode(nextPh?.chartMode ?? 'on')
+    setSeverityMode(nextPh?.severityMode ?? 'off')
+    setScalingMode(nextPh?.scalingMode ?? 'global')
+    setRangeParams(rangeParamRecordToMap(nextPh?.rangeParams))
+    setManualNumeric((nextPh?.manualNumeric as Partial<Record<NumericKey, string>> | undefined) ?? {})
+    setPhSummary({
+      llmProse: nextPh?.llmProse ?? null,
+      llmProseSourceSignature: nextPh?.llmProseSourceSignature ?? null,
+    })
+    setIsGeneratingPhSummary(false)
+    setPhSummaryError(null)
+    setChoices({
+      septalFlattening: (nextPh?.choices.septalFlattening as ChoiceState['septalFlattening'] | undefined) ?? 'none',
+      septalMotion: (nextPh?.choices.septalMotion as ChoiceState['septalMotion'] | undefined) ?? 'normal',
+      interatrialSeptalBowing: (nextPh?.choices.interatrialSeptalBowing as ChoiceState['interatrialSeptalBowing'] | undefined) ?? 'none',
+      pericardialEffusion: (nextPh?.choices.pericardialEffusion as ChoiceState['pericardialEffusion'] | undefined) ?? 'none',
+      venaCava: (nextPh?.choices.venaCava as ChoiceState['venaCava'] | undefined) ?? 'normal',
+      trSeverity: normalizeStoredRegurgitationSeverity(nextPh?.choices.trSeverity),
+      mrSeverity: normalizeStoredRegurgitationSeverity(nextPh?.choices.mrSeverity),
+      prSeverity: normalizeStoredRegurgitationSeverity(nextPh?.choices.prSeverity),
+      vortexFormation: (nextPh?.choices.vortexFormation as ChoiceState['vortexFormation'] | undefined) ?? 'not-assessed',
+      vortexSeverity: (nextPh?.choices.vortexSeverity as ChoiceState['vortexSeverity'] | undefined) ?? null,
+      vortexLocation: normalizeStoredVortexLocation(nextPh?.choices.vortexLocation),
+      helicity: (nextPh?.choices.helicity as ChoiceState['helicity'] | undefined) ?? 'not-assessed',
+      helicitySeverity: (nextPh?.choices.helicitySeverity as ChoiceState['helicitySeverity'] | undefined) ?? null,
+      helicityLocation: normalizeStoredHelicalFlowLocation(nextPh?.choices.helicityLocation),
+    })
+    setTexts({
+      ancillaryFindings: nextPh?.texts.ancillaryFindings ?? '',
+      additionalDetails: nextPh?.texts.additionalDetails ?? '',
+      flowComment: nextPh?.texts.flowComment ?? '',
+    })
+    setSelectedSection(normalizePhSectionId(nextPh?.selectedSection))
+    setSelectedRow(null)
+  }, [activeCase?.id])
+
+  useEffect(() => {
+    patchActiveCasePayload((payload) => ({
+      ...payload,
+      ph: {
+        selectedSection,
+        showFilter,
+        indexFilter,
+        abnormalFilter,
+        chartMode,
+        severityMode,
+        scalingMode,
+        rangeParams: rangeParamMapToRecord(rangeParams),
+        manualNumeric: manualNumeric as Record<string, string>,
+        choices: choices as Record<string, string | null>,
+        texts,
+        llmProse: phSummary.llmProse,
+        llmProseSourceSignature: phSummary.llmProseSourceSignature,
+      },
+    }))
+  }, [
+    abnormalFilter,
+    chartMode,
+    choices,
+    indexFilter,
+    manualNumeric,
+    patchActiveCasePayload,
+    phSummary.llmProse,
+    phSummary.llmProseSourceSignature,
+    rangeParams,
+    scalingMode,
+    selectedSection,
+    severityMode,
+    showFilter,
+    texts,
+  ])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchConfig().then((config) => {
+      if (!cancelled) setReferencePreset(normalizeCmrReferencePreset(config.reference_preset))
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     setReferenceLoading(true)
     void fetchReferenceParameters(sex, age)
       .then((result) => {
-        if (!cancelled) setReferenceData(result)
+        if (!cancelled) {
+          setReferenceData({
+            ...result,
+            parameters: applyCmrReferencePreset(result.parameters, sex, referencePreset),
+          })
+        }
       })
       .catch(() => {
         if (!cancelled) setReferenceData(null)
@@ -906,23 +1209,34 @@ export function CmrPhPage() {
     return () => {
       cancelled = true
     }
-  }, [age, sex])
+  }, [age, referencePreset, sex])
 
-  const extractedNumeric = useMemo(() => {
+  const extractionMeasurements = useMemo(() => {
     const measurements = new Map<string, number>()
     for (const measurement of extraction?.measurements ?? []) {
       measurements.set(measurement.parameter, measurement.value)
     }
+    return measurements
+  }, [extraction])
 
+  const readExtractionMeasurement = useCallback((...parameterKeys: string[]): number | null => {
+    for (const parameterKey of parameterKeys) {
+      const value = extractionMeasurements.get(parameterKey)
+      if (value !== undefined) return value
+    }
+    return null
+  }, [extractionMeasurements])
+
+  const extractedNumeric = useMemo(() => {
     const next: Partial<Record<NumericKey, number>> = {}
     ;(Object.keys(NUMERIC_FIELDS) as NumericKey[]).forEach((key) => {
       const param = NUMERIC_FIELDS[key].extractedParam
       if (!param) return
-      const value = measurements.get(param)
+      const value = extractionMeasurements.get(param)
       if (value !== undefined) next[key] = value
     })
     return next
-  }, [extraction])
+  }, [extractionMeasurements])
 
   const getBaseNumeric = useCallback((key: NumericKey): number | null => {
     const manual = manualNumeric[key]
@@ -998,6 +1312,29 @@ export function CmrPhPage() {
     return formatNumber(resolveNumericNumber(key), NUMERIC_FIELDS[key].decimals)
   }, [manualNumeric, resolveNumericNumber])
 
+  const phSupplementalMeasurements = useMemo(() => {
+    const laMaxVolume = readExtractionMeasurement('LA max volume')
+    const laMaxVolumeIndex = readExtractionMeasurement('LA max volume (i)')
+      ?? (laMaxVolume !== null && bsa ? round(laMaxVolume / bsa, 1) : null)
+
+    const lvMass = readExtractionMeasurement('LV mass')
+    const pcwp = readExtractionMeasurement('PCWP')
+      ?? (laMaxVolume !== null && lvMass !== null
+        ? round(5.7591 + (0.07505 * laMaxVolume) + (0.05289 * lvMass) - (1.9927 * (sex === 'Male' ? 1 : 0)), 1)
+        : null)
+
+    const raMaxVolume = readExtractionMeasurement('RA max volume')
+    const mrap = readExtractionMeasurement('mRAP')
+      ?? (raMaxVolume !== null ? round(6.4547 + (0.05828 * raMaxVolume), 1) : null)
+
+    return {
+      laMaxVolumeIndex,
+      pcwp,
+      mrap,
+      lvEf: readExtractionMeasurement('LV EF'),
+    }
+  }, [bsa, readExtractionMeasurement, sex])
+
   const updateManualNumeric = useCallback((key: NumericKey, value: string) => {
     setManualNumeric((prev) => {
       const next = { ...prev }
@@ -1038,9 +1375,8 @@ export function CmrPhPage() {
   const rvRows = useMemo(() => buildRows(RV_QUANT_KEYS), [buildRows])
   const paRows = useMemo(() => buildRows(PA_QUANT_KEYS), [buildRows])
   const valveRows = useMemo(() => buildRows(VALVE_QUANT_KEYS), [buildRows])
-  const additionalRows = useMemo(() => buildRows(ADDITIONAL_QUANT_KEYS), [buildRows])
 
-  const allQuantRows = useMemo(() => [...rvRows, ...paRows, ...valveRows, ...additionalRows], [additionalRows, paRows, rvRows, valveRows])
+  const allQuantRows = useMemo(() => [...rvRows, ...paRows, ...valveRows], [paRows, rvRows, valveRows])
 
   const filterRows = useCallback((rows: QuantitativeDisplayRow[]) => (
     rows.filter((row) => {
@@ -1057,7 +1393,196 @@ export function CmrPhPage() {
   const filteredRvRows = useMemo(() => filterRows(rvRows), [filterRows, rvRows])
   const filteredPaRows = useMemo(() => filterRows(paRows), [filterRows, paRows])
   const filteredValveRows = useMemo(() => filterRows(valveRows), [filterRows, valveRows])
-  const filteredAdditionalRows = useMemo(() => filterRows(additionalRows), [additionalRows, filterRows])
+
+  const activeQuantRows = useMemo(() => {
+    switch (selectedSection) {
+      case 'rv':
+        return rvRows
+      case 'pa-flow':
+        return paRows
+      case 'valves':
+        return valveRows
+      default:
+        return []
+    }
+  }, [paRows, rvRows, selectedSection, valveRows])
+
+  const hasQuantitativeToolbar = activeQuantRows.length > 0
+  const supportsIndexFilter = useMemo(
+    () => activeQuantRows.some((row) => row.canonical?.indexing === 'BSA'),
+    [activeQuantRows],
+  )
+  const supportsAbnormalFilter = selectedSection === 'valves'
+    || activeQuantRows.some((row) => row.canonical != null)
+  const supportsSeverityMode = activeQuantRows.some((row) => row.canonical != null)
+  const supportsChartMode = activeQuantRows.some(
+    (row) => row.canonical != null && hasValidRange(row.canonical.ll, row.canonical.ul),
+  )
+
+  const valveDetailCards = useMemo(() => {
+    const formatMetric = (key: NumericKey): string | null => {
+      const value = resolveNumericNumber(key)
+      if (value == null) return null
+      const field = NUMERIC_FIELDS[key]
+      const unit = field.unit ? ` ${field.unit}` : ''
+      return `${formatNumber(value, field.decimals ?? 0)}${unit}`
+    }
+
+    const resolveSeverity = (
+      key: 'trRegurgitantFraction' | 'mrRegurgitantFraction',
+      fallbackSeverity: RegurgitationSeverity,
+    ): ValveRfSeverity | null => {
+      const rf = resolveNumericNumber(key)
+      if (rf != null) return rfToRegurgitationSeverity(rf)
+      return fallbackSeverity
+    }
+
+    const buildMetrics = (items: Array<{ key: NumericKey; label: string }>): ValveDetailCardMetric[] => (
+      items
+        .map((item) => {
+          const value = formatMetric(item.key)
+          return value ? { label: item.label, value } : null
+        })
+        .filter((item): item is ValveDetailCardMetric => item !== null)
+    )
+
+    return [
+      {
+        title: 'Tricuspid valve',
+        severity: resolveSeverity('trRegurgitantFraction', choices.trSeverity),
+        get severityLabel() {
+          return buildValveSeverityPillLabel('TR', this.severity)
+        },
+        metrics: buildMetrics([
+          { key: 'trRegurgitantFraction', label: 'Regurgitant fraction' },
+          { key: 'trRegurgitantVolume', label: 'Regurgitant volume' },
+        ]),
+      },
+      {
+        title: 'Mitral valve',
+        severity: resolveSeverity('mrRegurgitantFraction', choices.mrSeverity),
+        get severityLabel() {
+          return buildValveSeverityPillLabel('MR', this.severity)
+        },
+        metrics: buildMetrics([
+          { key: 'mrRegurgitantFraction', label: 'Regurgitant fraction' },
+          { key: 'mrRegurgitantVolume', label: 'Regurgitant volume' },
+        ]),
+      },
+    ]
+      .filter((card) => {
+        const hasMetrics = card.metrics.length > 0
+        if (showFilter === 'recorded' && !hasMetrics) return false
+        if (abnormalFilter === 'abnormal') {
+          return card.severity != null && card.severity !== 'none'
+        }
+        return true
+      })
+  }, [abnormalFilter, choices.mrSeverity, choices.trSeverity, resolveNumericNumber, showFilter])
+
+  const branchFlowPercentages = useMemo(
+    () => computeBranchFlowPercentages({
+      mainPaNetFlow: resolveNumericNumber('mainPaNetFlow'),
+      rpaNetFlow: resolveNumericNumber('rpaNetFlow'),
+      lpaNetFlow: resolveNumericNumber('lpaNetFlow'),
+    }),
+    [resolveNumericNumber],
+  )
+
+  const phSummaryData = useMemo(() => buildPhSummaryData(
+    {
+      rvEdvi: resolveNumericNumber('rvEdvi'),
+      rvEsvi: resolveNumericNumber('rvEsvi'),
+      rvEf: resolveNumericNumber('rvEf'),
+      tapse: resolveNumericNumber('tapse'),
+      rvMassIndex: resolveNumericNumber('rvMassIndex'),
+      rvSvi: resolveNumericNumber('rvSvi'),
+      rvCi: resolveNumericNumber('rvCi'),
+      rvLvVolumeRatio: resolveNumericNumber('rvLvVolumeRatio'),
+      raMaxVolumeIndex: resolveNumericNumber('raMaxVolumeIndex'),
+      laMaxVolumeIndex: phSupplementalMeasurements.laMaxVolumeIndex,
+      lvEf: phSupplementalMeasurements.lvEf,
+      mainPaDiameter: resolveNumericNumber('mainPaDiameter'),
+      paDistensibility: resolveNumericNumber('paDistensibility'),
+      pcwp: phSupplementalMeasurements.pcwp,
+      mrap: phSupplementalMeasurements.mrap,
+      trRegurgitantFraction: resolveNumericNumber('trRegurgitantFraction'),
+      mrRegurgitantFraction: resolveNumericNumber('mrRegurgitantFraction'),
+      pericardialEffusionSize: resolveNumericNumber('pericardialEffusionSize'),
+      vortexDurationPercent: resolveNumericNumber('vortexDurationPercent'),
+      rpaPercent: branchFlowPercentages.rpaPercent,
+      lpaPercent: branchFlowPercentages.lpaPercent,
+    },
+    canonicalLookup,
+    {
+      septalFlattening: choices.septalFlattening,
+      septalMotion: choices.septalMotion,
+      interatrialSeptalBowing: choices.interatrialSeptalBowing,
+      pericardialEffusion: choices.pericardialEffusion,
+      venaCava: choices.venaCava,
+      trSeverity: choices.trSeverity,
+      mrSeverity: choices.mrSeverity,
+      vortexFormation: choices.vortexFormation,
+      vortexSeverity: choices.vortexSeverity,
+      vortexLocation: choices.vortexLocation,
+      helicity: choices.helicity,
+      helicitySeverity: choices.helicitySeverity,
+      helicityLocation: choices.helicityLocation,
+    } satisfies PhSummaryChoices,
+  ), [
+    branchFlowPercentages.lpaPercent,
+    branchFlowPercentages.rpaPercent,
+    canonicalLookup,
+    choices.helicity,
+    choices.helicityLocation,
+    choices.helicitySeverity,
+    choices.interatrialSeptalBowing,
+    choices.mrSeverity,
+    choices.pericardialEffusion,
+    choices.septalFlattening,
+    choices.septalMotion,
+    choices.trSeverity,
+    choices.venaCava,
+    choices.vortexFormation,
+    choices.vortexLocation,
+    choices.vortexSeverity,
+    phSupplementalMeasurements.laMaxVolumeIndex,
+    phSupplementalMeasurements.lvEf,
+    phSupplementalMeasurements.mrap,
+    phSupplementalMeasurements.pcwp,
+    resolveNumericNumber,
+  ])
+
+  const phSummarySignature = useMemo(
+    () => buildPhSummarySignature(phSummaryData),
+    [phSummaryData],
+  )
+  const isPhSummaryStale = phSummary.llmProse !== null
+    && phSummary.llmProseSourceSignature !== phSummarySignature
+
+  const handleGeneratePhSummary = useCallback(async () => {
+    setIsGeneratingPhSummary(true)
+    setPhSummaryError(null)
+    try {
+      const prose = await generateCmrPhProse(phSummaryData)
+      setPhSummary({
+        llmProse: prose,
+        llmProseSourceSignature: phSummarySignature,
+      })
+    } catch (error) {
+      setPhSummaryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsGeneratingPhSummary(false)
+    }
+  }, [phSummaryData, phSummarySignature])
+
+  const clearPhSummary = useCallback(() => {
+    setPhSummary({
+      llmProse: null,
+      llmProseSourceSignature: null,
+    })
+    setPhSummaryError(null)
+  }, [])
 
   const collectMeasuredRels = useCallback(() => {
     const rels: number[] = []
@@ -1128,207 +1653,405 @@ export function CmrPhPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-start gap-5">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 2h14M3 6h10M5 10h6M7 14h2" /></svg>
-            Filters
-          </div>
-          <div className="flex items-center gap-2">
-            <PillToggle
-              options={[
-                { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded values only' },
-                { key: 'all', label: <AllRowsIcon />, tooltip: 'All parameters' },
-              ]}
-              compact
-              value={showFilter}
-              onChange={(value) => setShowFilter(value as 'all' | 'recorded')}
-            />
-            <PillToggle
-              options={[
-                { key: 'all', label: <BsaOffIcon />, tooltip: 'Absolute + indexed' },
-                { key: 'indexed', label: <BsaIcon />, tooltip: 'BSA-indexed only' },
-              ]}
-              value={indexFilter}
-              onChange={(value) => setIndexFilter(value as 'all' | 'indexed')}
-            />
-            <PillToggle
-              options={[
-                { key: 'all', label: <SeverityIcon />, tooltip: 'All severities' },
-                { key: 'abnormal', label: <svg className="h-3.5 w-3.5" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="hsl(4 55% 50%)" /></svg>, tooltip: 'Abnormal only' },
-              ]}
-              value={abnormalFilter}
-              onChange={(value) => setAbnormalFilter(value as 'all' | 'abnormal')}
-            />
-          </div>
-        </div>
-
-        <div className="h-10 w-px self-end bg-[hsl(var(--stroke-soft)/0.3)]" />
-
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
-            Viewing
-          </div>
-          <div className="flex items-center gap-2">
-            <PillToggle
-              options={[
-                { key: 'off', label: <SeverityOffIcon />, tooltip: 'Severity colouring off' },
-                { key: 'abnormal', label: <SeverityIcon />, tooltip: 'Colour rows by severity' },
-              ]}
-              value={severityMode}
-              onChange={(value) => setSeverityMode(value as 'off' | 'abnormal')}
-            />
-            <PillToggle
-              options={[
-                { key: 'on', label: <ChartIcon />, tooltip: 'Show range charts' },
-                { key: 'off', label: <ChartOffIcon />, tooltip: 'Table only' },
-              ]}
-              value={chartMode}
-              onChange={(value) => setChartMode(value as 'off' | 'on')}
-            />
-            {chartMode === 'on' && (
-              <ChartControlStrip scalingMode={scalingMode} onGlobalAuto={handleGlobalAuto} onPerMeasAuto={handlePerMeasurementAuto} />
-            )}
-          </div>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {PH_SECTION_TILES.map((section) => (
+          <SectionNavTile
+            key={section.id}
+            title={section.title}
+            selected={selectedSection === section.id}
+            onClick={() => setSelectedSection(section.id)}
+          />
+        ))}
       </div>
 
-      <QuantitativeSection title="RV size & function">
-        <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
-      </QuantitativeSection>
-
-      <SectionCard title="Septal / right heart signs">
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Subsection title="Septal geometry">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <FieldLabel>Septal flattening</FieldLabel>
-                <ChoicePills options={SEPTAL_FLATTENING_OPTIONS} value={choices.septalFlattening} onChange={(value) => updateChoice('septalFlattening', value)} />
+      {(hasQuantitativeToolbar || supportsSeverityMode || supportsChartMode) && (
+        <div className="flex flex-wrap items-start gap-5">
+          {hasQuantitativeToolbar && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 2h14M3 6h10M5 10h6M7 14h2" /></svg>
+                Filters
               </div>
-              <div className="space-y-2">
-                <FieldLabel>Septal motion</FieldLabel>
-                <ChoicePills options={SEPTAL_MOTION_OPTIONS} value={choices.septalMotion} onChange={(value) => updateChoice('septalMotion', value)} />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Interatrial septal bowing</FieldLabel>
-                <ChoicePills options={INTERATRIAL_BOWING_OPTIONS} value={choices.interatrialSeptalBowing} onChange={(value) => updateChoice('interatrialSeptalBowing', value)} />
+              <div className="flex items-center gap-2">
+                <PillToggle
+                  options={[
+                    { key: 'recorded', label: <RecordedIcon />, tooltip: 'Recorded values only' },
+                    { key: 'all', label: <AllRowsIcon />, tooltip: 'All parameters' },
+                  ]}
+                  compact
+                  value={showFilter}
+                  onChange={(value) => setShowFilter(value as 'all' | 'recorded')}
+                />
+                {supportsIndexFilter && (
+                  <PillToggle
+                    options={[
+                      { key: 'all', label: <BsaOffIcon />, tooltip: 'Absolute + indexed' },
+                      { key: 'indexed', label: <BsaIcon />, tooltip: 'BSA-indexed only' },
+                    ]}
+                    value={indexFilter}
+                    onChange={(value) => setIndexFilter(value as 'all' | 'indexed')}
+                  />
+                )}
+                {supportsAbnormalFilter && (
+                  <PillToggle
+                    options={[
+                      { key: 'all', label: <SeverityIcon />, tooltip: 'All severities' },
+                      { key: 'abnormal', label: <svg className="h-3.5 w-3.5" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="hsl(4 55% 50%)" /></svg>, tooltip: 'Abnormal only' },
+                    ]}
+                    value={abnormalFilter}
+                    onChange={(value) => setAbnormalFilter(value as 'all' | 'abnormal')}
+                  />
+                )}
               </div>
             </div>
-          </Subsection>
+          )}
 
-          <Subsection title="Ancillary signs">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <FieldLabel>Pericardial effusion</FieldLabel>
-                <ChoicePills options={PERICARDIAL_EFFUSION_OPTIONS} value={choices.pericardialEffusion} onChange={(value) => updateChoice('pericardialEffusion', value)} />
+          {(hasQuantitativeToolbar && (supportsSeverityMode || supportsChartMode)) && (
+            <div className="h-10 w-px self-end bg-[hsl(var(--stroke-soft)/0.3)]" />
+          )}
+
+          {(supportsSeverityMode || supportsChartMode) && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--tone-neutral-400))]">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5" /><path d="M1 6h14" /></svg>
+                Viewing
               </div>
-              {choices.pericardialEffusion !== 'none' && (
-                <MeasurementRow field={NUMERIC_FIELDS.pericardialEffusionSize} value={resolveNumericValue('pericardialEffusionSize')} onChange={(value) => updateManualNumeric('pericardialEffusionSize', value)} />
+              <div className="flex items-center gap-2">
+                {supportsSeverityMode && (
+                  <PillToggle
+                    options={[
+                      { key: 'off', label: <SeverityOffIcon />, tooltip: 'Severity colouring off' },
+                      { key: 'abnormal', label: <SeverityIcon />, tooltip: 'Colour rows by severity' },
+                    ]}
+                    value={severityMode}
+                    onChange={(value) => setSeverityMode(value as 'off' | 'abnormal')}
+                  />
+                )}
+                {supportsChartMode && (
+                  <>
+                    <PillToggle
+                      options={[
+                        { key: 'on', label: <ChartIcon />, tooltip: 'Show range charts' },
+                        { key: 'off', label: <ChartOffIcon />, tooltip: 'Table only' },
+                      ]}
+                      value={chartMode}
+                      onChange={(value) => setChartMode(value as 'off' | 'on')}
+                    />
+                    {chartMode === 'on' && (
+                      <ChartControlStrip scalingMode={scalingMode} onGlobalAuto={handleGlobalAuto} onPerMeasAuto={handlePerMeasurementAuto} />
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedSection === 'summary' && (
+        <SectionCard title="PH summary">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[hsl(var(--tone-neutral-100))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-700))]">
+                {phSummaryData.probabilityLabel}
+              </span>
+              {phSummaryData.adaptationLabel && (
+                <span className="rounded-full bg-[hsl(var(--tone-neutral-50))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-700))] ring-1 ring-[hsl(var(--stroke-soft)/0.72)]">
+                  {phSummaryData.adaptationLabel}
+                </span>
               )}
-              <div className="space-y-2">
-                <FieldLabel>Vena cava</FieldLabel>
-                <ChoicePills options={VENA_CAVA_OPTIONS} value={choices.venaCava} onChange={(value) => updateChoice('venaCava', value)} />
+              <span className="rounded-full bg-[hsl(var(--tone-neutral-50))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--tone-neutral-600))] ring-1 ring-[hsl(var(--stroke-soft)/0.72)]">
+                {phSummaryData.phenotypeLabel}
+              </span>
+            </div>
+
+            {phSummary.llmProse !== null && (
+              <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                {phSummary.llmProse}
+              </p>
+            )}
+
+            {phSummaryError && (
+              <p className="text-xs text-red-500">{phSummaryError}</p>
+            )}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={isGeneratingPhSummary}
+                onClick={handleGeneratePhSummary}
+                className={cn(
+                  'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
+                  'bg-foreground text-background hover:bg-foreground/90',
+                  'disabled:cursor-not-allowed disabled:opacity-40',
+                )}
+              >
+                {isGeneratingPhSummary
+                  ? 'Generating...'
+                  : phSummary.llmProse !== null
+                    ? isPhSummaryStale
+                      ? 'Regenerate Summary (Stale)'
+                      : 'Regenerate Summary'
+                    : 'Generate Summary'}
+              </button>
+              {phSummary.llmProse !== null && (
+                <button
+                  type="button"
+                  onClick={clearPhSummary}
+                  className="rounded-full px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-300 transition-all hover:bg-red-50 hover:text-red-700"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {selectedSection === 'rv' && (
+        <QuantitativeSection title="RV size & function">
+          <QuantitativeTable rows={filteredRvRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
+        </QuantitativeSection>
+      )}
+
+      {selectedSection === 'signs' && (
+        <SectionCard title="Septal / right heart signs">
+          <div className="grid gap-8 xl:grid-cols-2">
+            <div className="space-y-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <FieldLabel>Septal flattening</FieldLabel>
+                  <ChoicePills options={SEPTAL_FLATTENING_OPTIONS} value={choices.septalFlattening} onChange={(value) => updateChoice('septalFlattening', value)} />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel>Septal motion</FieldLabel>
+                  <ChoicePills options={SEPTAL_MOTION_OPTIONS} value={choices.septalMotion} onChange={(value) => updateChoice('septalMotion', value)} />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel>Interatrial septal bowing</FieldLabel>
+                  <ChoicePills options={INTERATRIAL_BOWING_OPTIONS} value={choices.interatrialSeptalBowing} onChange={(value) => updateChoice('interatrialSeptalBowing', value)} />
+                </div>
               </div>
             </div>
-          </Subsection>
-        </div>
-      </SectionCard>
 
-      <QuantitativeSection title="Pulmonary artery & flow">
-        <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
-      </QuantitativeSection>
-
-      <SectionCard title="Valvular context">
-        <div className="grid gap-6">
-          <div className="grid gap-6 xl:grid-cols-3">
-            <Subsection title="Tricuspid regurgitation">
-              <div className="space-y-2">
-                <FieldLabel>Severity</FieldLabel>
-                <ChoicePills options={REGURGITATION_OPTIONS} value={choices.trSeverity} onChange={(value) => updateChoice('trSeverity', value)} />
-              </div>
-            </Subsection>
-
-            <Subsection title="Mitral regurgitation">
-              <div className="space-y-2">
-                <FieldLabel>Severity</FieldLabel>
-                <ChoicePills options={REGURGITATION_OPTIONS} value={choices.mrSeverity} onChange={(value) => updateChoice('mrSeverity', value)} />
-              </div>
-            </Subsection>
-
-            <Subsection title="Pulmonary regurgitation">
-              <div className="space-y-2">
-                <FieldLabel>Severity</FieldLabel>
-                <ChoicePills options={REGURGITATION_OPTIONS} value={choices.prSeverity} onChange={(value) => updateChoice('prSeverity', value)} />
-              </div>
-            </Subsection>
-          </div>
-
-          <QuantitativeTable rows={filteredValveRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Additional">
-        <div className="grid gap-6">
-          <QuantitativeTable rows={filteredAdditionalRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} />
-
-          <div className="grid gap-6 xl:grid-cols-2">
-            <Subsection title="Additional notes">
-              <div className="grid gap-4">
-                <TextareaField label="Ancillary findings" value={texts.ancillaryFindings} onChange={(value) => updateText('ancillaryFindings', value)} placeholder="-" />
-                <TextareaField label="Additional details" value={texts.additionalDetails} onChange={(value) => updateText('additionalDetails', value)} placeholder="-" />
-              </div>
-            </Subsection>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="4D Flow">
-        <div className="grid gap-6">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-            <Subsection title="Qualitative flow pattern">
+            <div className="space-y-4">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <FieldLabel>Vortex formation</FieldLabel>
-                  <ChoicePills options={PRESENCE_OPTIONS} value={choices.vortexFormation} onChange={(value) => updateChoice('vortexFormation', value)} />
+                  <FieldLabel>Pericardial effusion</FieldLabel>
+                  <ChoicePills options={PERICARDIAL_EFFUSION_OPTIONS} value={choices.pericardialEffusion} onChange={(value) => updateChoice('pericardialEffusion', value)} />
                 </div>
-                {choices.vortexFormation === 'present' && (
-                  <div className="space-y-2">
-                    <FieldLabel>Vortex severity</FieldLabel>
-                    <ChoicePills options={ADVANCED_SEVERITY_OPTIONS} value={choices.vortexSeverity ?? 'mild'} onChange={(value) => updateChoice('vortexSeverity', value)} />
-                  </div>
+                {choices.pericardialEffusion !== 'none' && (
+                  <MeasurementRow field={NUMERIC_FIELDS.pericardialEffusionSize} value={resolveNumericValue('pericardialEffusionSize')} onChange={(value) => updateManualNumeric('pericardialEffusionSize', value)} />
                 )}
                 <div className="space-y-2">
-                  <FieldLabel>Helicity</FieldLabel>
-                  <ChoicePills options={PRESENCE_OPTIONS} value={choices.helicity} onChange={(value) => updateChoice('helicity', value)} />
+                  <FieldLabel>Vena cava</FieldLabel>
+                  <ChoicePills options={VENA_CAVA_OPTIONS} value={choices.venaCava} onChange={(value) => updateChoice('venaCava', value)} />
                 </div>
-                {choices.helicity === 'present' && (
-                  <div className="space-y-2">
-                    <FieldLabel>Helicity severity</FieldLabel>
-                    <ChoicePills options={ADVANCED_SEVERITY_OPTIONS} value={choices.helicitySeverity ?? 'mild'} onChange={(value) => updateChoice('helicitySeverity', value)} />
-                  </div>
-                )}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {selectedSection === 'pa-flow' && (
+        <QuantitativeSection title="Pulmonary artery & flow">
+          <QuantitativeTable rows={filteredPaRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
+        </QuantitativeSection>
+      )}
+
+      {selectedSection === 'valves' && (
+        <SectionCard title="Valvular context">
+          <div className="grid gap-6">
+            <Subsection title="Valve severity">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <FieldLabel>Tricuspid regurgitation</FieldLabel>
+                  <ChoicePills
+                    options={REGURGITATION_SEVERITY_OPTIONS}
+                    value={choices.trSeverity}
+                    onChange={(value) => updateChoice('trSeverity', value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel>Mitral regurgitation</FieldLabel>
+                  <ChoicePills
+                    options={REGURGITATION_SEVERITY_OPTIONS}
+                    value={choices.mrSeverity}
+                    onChange={(value) => updateChoice('mrSeverity', value)}
+                  />
+                </div>
               </div>
             </Subsection>
+            <QuantitativeTable rows={filteredValveRows} chartMode={chartMode} severityMode={severityMode} rangeParams={rangeParams} onSelectRow={setSelectedRow} framed={false} />
+            <div className="grid gap-4 xl:grid-cols-3">
+              {valveDetailCards.map((card) => (
+                <ValveDetailCard
+                  key={card.title}
+                  title={card.title}
+                  metrics={card.metrics}
+                  severity={card.severity}
+                  severityLabel={card.severityLabel}
+                />
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
 
-            <Subsection title="Branch flow quantification">
-              <div className="space-y-4">
-                <MeasurementRow field={NUMERIC_FIELDS.mainPaNetFlow} value={resolveNumericValue('mainPaNetFlow')} onChange={(value) => updateManualNumeric('mainPaNetFlow', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.rpaNetFlow} value={resolveNumericValue('rpaNetFlow')} onChange={(value) => updateManualNumeric('rpaNetFlow', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.lpaNetFlow} value={resolveNumericValue('lpaNetFlow')} onChange={(value) => updateManualNumeric('lpaNetFlow', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.rpaPercent} value={resolveNumericValue('rpaPercent')} onChange={(value) => updateManualNumeric('rpaPercent', value)} />
-                <MeasurementRow field={NUMERIC_FIELDS.lpaPercent} value={resolveNumericValue('lpaPercent')} onChange={(value) => updateManualNumeric('lpaPercent', value)} />
-              </div>
+      {selectedSection === '4d-flow' && (
+        <SectionCard title="4D Flow">
+          <div className="grid gap-6">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              <Subsection title="Qualitative flow pattern">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <FieldLabel>Vortex formation</FieldLabel>
+                    <ChoicePills options={PRESENCE_OPTIONS} value={choices.vortexFormation} onChange={(value) => updateChoice('vortexFormation', value)} />
+                  </div>
+                  {choices.vortexFormation === 'present' && (
+                    <>
+                      <div className="space-y-2">
+                        <FieldLabel>Vortex location</FieldLabel>
+                        <ChoicePills options={VORTEX_LOCATION_OPTIONS} value={choices.vortexLocation} onChange={(value) => updateChoice('vortexLocation', value)} />
+                      </div>
+                      <MeasurementRow
+                        field={NUMERIC_FIELDS.vortexDurationPercent}
+                        value={resolveNumericValue('vortexDurationPercent')}
+                        onChange={(value) => updateManualNumeric('vortexDurationPercent', value)}
+                      />
+                      <div className="space-y-2">
+                        <FieldLabel>Visual prominence</FieldLabel>
+                        <ChoicePills options={ADVANCED_SEVERITY_OPTIONS} value={choices.vortexSeverity ?? 'mild'} onChange={(value) => updateChoice('vortexSeverity', value)} />
+                      </div>
+                    </>
+                  )}
+                  <div className="space-y-2">
+                    <FieldLabel>Helical / disorganised flow</FieldLabel>
+                    <ChoicePills options={PRESENCE_OPTIONS} value={choices.helicity} onChange={(value) => updateChoice('helicity', value)} />
+                  </div>
+                  {choices.helicity === 'present' && (
+                    <>
+                      <div className="space-y-2">
+                        <FieldLabel>Flow disturbance location</FieldLabel>
+                        <ChoicePills options={HELICAL_FLOW_LOCATION_OPTIONS} value={choices.helicityLocation} onChange={(value) => updateChoice('helicityLocation', value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <FieldLabel>Severity</FieldLabel>
+                        <ChoicePills options={ADVANCED_SEVERITY_OPTIONS} value={choices.helicitySeverity ?? 'mild'} onChange={(value) => updateChoice('helicitySeverity', value)} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Subsection>
+
+              <Subsection title="Branch flow quantification">
+                <div className="space-y-4">
+                  <BranchFlowRow
+                    label={NUMERIC_FIELDS.mainPaNetFlow.label}
+                    value={resolveNumericValue('mainPaNetFlow')}
+                    unit={NUMERIC_FIELDS.mainPaNetFlow.unit ?? ''}
+                    onChange={(value) => updateManualNumeric('mainPaNetFlow', value)}
+                  />
+                  <BranchFlowRow
+                    label={NUMERIC_FIELDS.rpaNetFlow.label}
+                    value={resolveNumericValue('rpaNetFlow')}
+                    unit={NUMERIC_FIELDS.rpaNetFlow.unit ?? ''}
+                    onChange={(value) => updateManualNumeric('rpaNetFlow', value)}
+                  />
+                  <BranchFlowRow
+                    label={NUMERIC_FIELDS.lpaNetFlow.label}
+                    value={resolveNumericValue('lpaNetFlow')}
+                    unit={NUMERIC_FIELDS.lpaNetFlow.unit ?? ''}
+                    onChange={(value) => updateManualNumeric('lpaNetFlow', value)}
+                  />
+                  <BranchFlowRow
+                    label={NUMERIC_FIELDS.rpaPercent.label}
+                    value={formatNumber(branchFlowPercentages.rpaPercent, NUMERIC_FIELDS.rpaPercent.decimals)}
+                    unit={NUMERIC_FIELDS.rpaPercent.unit ?? ''}
+                    readOnly
+                  />
+                  <BranchFlowRow
+                    label={NUMERIC_FIELDS.lpaPercent.label}
+                    value={formatNumber(branchFlowPercentages.lpaPercent, NUMERIC_FIELDS.lpaPercent.decimals)}
+                    unit={NUMERIC_FIELDS.lpaPercent.unit ?? ''}
+                    readOnly
+                  />
+                </div>
+              </Subsection>
+            </div>
+
+            <Subsection title="4D Flow Comment">
+              <TextareaField label="Advanced flow note" value={texts.flowComment} onChange={(value) => updateText('flowComment', value)} placeholder="-" />
             </Subsection>
           </div>
-
-          <Subsection title="4D Flow Comment">
-            <TextareaField label="Advanced flow note" value={texts.flowComment} onChange={(value) => updateText('flowComment', value)} placeholder="-" />
-          </Subsection>
-        </div>
-      </SectionCard>
+        </SectionCard>
+      )}
 
       {selectedRow?.canonical && <QuantitativeParameterDrilldown row={selectedRow} onClose={() => setSelectedRow(null)} />}
     </Stack>
   )
+}
+
+function BranchFlowRow({
+  label,
+  value,
+  unit,
+  onChange,
+  readOnly = false,
+}: {
+  label: string
+  value: string
+  unit: string
+  onChange?: (value: string) => void
+  readOnly?: boolean
+}) {
+  return (
+    <label className="grid grid-cols-[minmax(0,1fr)_7rem_4.5rem] items-center gap-x-3 gap-y-1">
+      <span className="text-sm text-[hsl(var(--foreground))]">{label}</span>
+      {readOnly ? (
+        <div className="house-input flex h-8 w-full items-center justify-end rounded-md px-3 text-xs text-[hsl(var(--foreground))]">
+          {value || '-'}
+        </div>
+      ) : (
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(event) => onChange?.(event.target.value)}
+          placeholder="-"
+          className="house-input h-8 w-full rounded-md px-3 text-right text-xs"
+        />
+      )}
+      <span className="text-sm text-[hsl(var(--muted-foreground))]">{unit}</span>
+    </label>
+  )
+}
+
+function computeBranchFlowPercentages({
+  mainPaNetFlow,
+  rpaNetFlow,
+  lpaNetFlow,
+}: {
+  mainPaNetFlow: number | null
+  rpaNetFlow: number | null
+  lpaNetFlow: number | null
+}): { rpaPercent: number | null; lpaPercent: number | null } {
+  if (rpaNetFlow !== null && lpaNetFlow !== null) {
+    const branchTotal = rpaNetFlow + lpaNetFlow
+    if (branchTotal !== 0) {
+      return {
+        rpaPercent: round((rpaNetFlow / branchTotal) * 100, 1),
+        lpaPercent: round((lpaNetFlow / branchTotal) * 100, 1),
+      }
+    }
+  }
+
+  if (mainPaNetFlow !== null && mainPaNetFlow !== 0) {
+    return {
+      rpaPercent: rpaNetFlow !== null ? round((rpaNetFlow / mainPaNetFlow) * 100, 1) : null,
+      lpaPercent: lpaNetFlow !== null ? round((lpaNetFlow / mainPaNetFlow) * 100, 1) : null,
+    }
+  }
+
+  return { rpaPercent: null, lpaPercent: null }
 }

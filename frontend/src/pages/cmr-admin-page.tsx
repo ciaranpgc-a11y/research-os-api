@@ -22,6 +22,7 @@ import {
   type CmrAccessCodeEntry,
 } from '@/lib/cmr-auth'
 import { cn } from '@/lib/utils'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 
 const RECENT_ACCESS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 const GENERATED_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -134,6 +135,7 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
   const [createError, setCreateError] = useState<string | null>(null)
   const [createdCode, setCreatedCode] = useState<{ name: string; code: string } | null>(null)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
+  const syncSessionScope = useCmrCaseStore((state) => state.syncSessionScope)
 
   useEffect(() => {
     const token = getCmrSessionToken()
@@ -179,7 +181,8 @@ export function CmrAdminPage({ standalone = false }: CmrAdminPageProps) {
     setLoginError(null)
     try {
       const result = await cmrAdminLogin(password.trim())
-      setCmrSession(result.session_token, result.name, result.is_admin)
+      setCmrSession(result.session_token, result.name, result.is_admin, result.access_code_id)
+      syncSessionScope(`cmr-access:${result.access_code_id}`)
       window.location.href = '/cmr-admin'
     } catch {
       setLoginError('Invalid admin password')

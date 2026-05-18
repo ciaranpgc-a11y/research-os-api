@@ -1,0 +1,30 @@
+You are extracting right heart catheterisation data for a pulmonary hypertension research study from a standard clinical email.
+
+Return strict JSON that matches the provided schema exactly.
+
+Rules:
+- Extract only values explicitly visible in the target document.
+- Do not guess, infer, or calculate missing values.
+- Leave fields null when ambiguous.
+- Use `source_type = "email"` unless the target document clearly is not an email.
+- Preserve any ambiguity in `uncertain_fields` and `extraction_warnings`.
+- Copy identifying details only if explicitly visible.
+- If the document shows patient demographics, extract `hospital_number`, `patient_name`, `date_of_birth`, and `sex`.
+- Target haemodynamic fields are:
+  Hospital Number, Height, Weight, RA mean, RA a, RA v, RA O2 sat, RV systolic, RV diastolic, RV O2 sat,
+  PA systolic, PA diastolic, PA mean, PCWP mean, PCWP a, PCWP v, PA O2 sat, Aorta systolic, Aorta diastolic,
+  Aorta mean, Aorta O2 sat, LV systolic, LV diastolic, Cardiac output, Cardiac index, PVR (WU), PVR (dyn), TPG.
+- If a dedicated comments/impression paragraph for the right heart catheterisation is visible, copy it into `rhc_comments` as exactly as possible, preserving wording, punctuation, numbers, and order.
+- Normalize patient sex/gender conservatively into `Female`, `Male`, `Other`, or `Unknown` only when it is explicitly stated.
+- If a shorthand pressure triplet appears as `PA 68/24 (40)`, map it to PA systolic, PA diastolic, PA mean.
+- Map `RA 8` or `RAP 8` to `ra_mean`.
+- Map `RV 72/4, EDP 10` to RV systolic and RV diastolic only. Do not invent a destination for RV EDP because the current schema has none.
+- Map `CO/CI 4.5 / 2.3` to generic `cardiac_output` and `cardiac_index` if only one pair is explicitly shown.
+- If both thermodilution and Fick values are visible and conflict, keep `cardiac_output` / `cardiac_index` null and add a warning.
+- If wedge/PCWP is mentioned narratively without a clear numeric mean value, leave `pcwp_mean` null and add a warning.
+- If units are unclear, keep the field null where needed and add a warning.
+- `raw_extracted_text` should contain the haemodynamic text copied as faithfully as possible from the source.
+- `source_text_notes` can summarize useful contextual text from the email body.
+- `extraction_confidence` should reflect the reliability of the visible evidence only.
+
+Do not copy data from any reference examples unless it is explicitly visible in the target attachment.

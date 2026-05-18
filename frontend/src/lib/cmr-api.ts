@@ -6,6 +6,8 @@ import {
   resolveConfig as localConfig,
   reloadData,
 } from '@/lib/cmr-local-data'
+import { buildCmrHeaders, getCmrApiBase, getCmrSessionToken } from '@/lib/cmr-auth'
+import type { CmrReferencePreset } from '@/lib/cmr-reference-presets'
 
 // ---- Reference Data Types ----
 
@@ -55,11 +57,34 @@ export type CmrCanonicalTableResponse = {
   parameters: CmrCanonicalParam[]
 }
 
+export type PapillaryMode = 'blood_pool' | 'mass'
+
+async function readReferenceDataError(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { detail?: string; error?: string }
+    const message = String(data.detail ?? data.error ?? '').trim()
+    if (message) return message
+  } catch {
+    // Fall through to text/status handling.
+  }
+
+  try {
+    const text = (await response.text()).trim()
+    if (text && !text.startsWith('<')) return text
+  } catch {
+    // Ignore text parsing failures.
+  }
+
+  return response.status ? `${fallback} (${response.status})` : fallback
+}
+
 export async function fetchReferenceParameters(
   sex: string = 'Male',
   age?: number,
+  papillaryMode?: PapillaryMode,
 ): Promise<CmrCanonicalTableResponse> {
-  return localRefParams(sex, age)
+  await reloadData()
+  return localRefParams(sex, age, papillaryMode)
 }
 
 // ---- Parameter ranges (for editing) ----
@@ -101,6 +126,7 @@ export type CmrParameterRangesResponse = {
 }
 
 export async function fetchParameterRanges(parameterKey: string): Promise<CmrParameterRangesResponse> {
+  await reloadData()
   return localParamRanges(parameterKey)
 }
 
@@ -121,12 +147,12 @@ export type CmrReferenceRangeUpdate = {
 export async function updateReferenceRanges(
   updates: CmrReferenceRangeUpdate[],
 ): Promise<{ updated: number }> {
-  const res = await fetch('/api/cmr-data/ranges', {
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data/ranges`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildCmrHeaders(getCmrSessionToken()),
     body: JSON.stringify({ updates }),
   })
-  if (!res.ok) throw new Error('Failed to update reference ranges')
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to update reference ranges'))
   const result = await res.json()
   // Reload in-memory data so tables reflect changes
   await reloadData()
@@ -150,12 +176,12 @@ export type CmrParamMetaUpdate = {
 }
 
 export async function updateParameterMeta(update: CmrParamMetaUpdate): Promise<void> {
-  const res = await fetch('/api/cmr-data/param-meta', {
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data/param-meta`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildCmrHeaders(getCmrSessionToken()),
     body: JSON.stringify(update),
   })
-  if (!res.ok) throw new Error('Failed to update parameter metadata')
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to update parameter metadata'))
   await reloadData()
 }
 
@@ -164,35 +190,42 @@ export async function updateParameterMeta(update: CmrParamMetaUpdate): Promise<v
 export type CmrAliasEntry = { extracted_name: string; canonical_name: string }
 
 export async function fetchAliases(): Promise<CmrAliasEntry[]> {
+  await reloadData()
   return localAliases()
 }
 
 export async function createAlias(extracted_name: string, canonical_name: string): Promise<void> {
   // Read current data, add alias, write back
-  const res = await fetch('/api/cmr-data')
-  if (!res.ok) throw new Error('Failed to read data')
+  const headers = buildCmrHeaders(getCmrSessionToken())
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data`, {
+    headers,
+  })
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to read data'))
   const data = await res.json()
   data.aliases[extracted_name] = canonical_name
-  const putRes = await fetch('/api/cmr-data', {
+  const putRes = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(data),
   })
-  if (!putRes.ok) throw new Error('Failed to create alias')
+  if (!putRes.ok) throw new Error(await readReferenceDataError(putRes, 'Failed to create alias'))
   await reloadData()
 }
 
 export async function deleteAlias(extracted_name: string): Promise<void> {
-  const res = await fetch('/api/cmr-data')
-  if (!res.ok) throw new Error('Failed to read data')
+  const headers = buildCmrHeaders(getCmrSessionToken())
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data`, {
+    headers,
+  })
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to read data'))
   const data = await res.json()
   delete data.aliases[extracted_name]
-  const putRes = await fetch('/api/cmr-data', {
+  const putRes = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(data),
   })
-  if (!putRes.ok) throw new Error('Failed to delete alias')
+  if (!putRes.ok) throw new Error(await readReferenceDataError(putRes, 'Failed to delete alias'))
   await reloadData()
 }
 
@@ -201,38 +234,39 @@ export async function deleteAlias(extracted_name: string): Promise<void> {
 export type CmrSectionsConfig = Record<string, string[]>
 
 export async function fetchSections(): Promise<CmrSectionsConfig> {
+  await reloadData()
   return localSections()
 }
 
 export async function updateSections(sections: CmrSectionsConfig): Promise<void> {
-  const res = await fetch('/api/cmr-data/sections', {
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data/sections`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildCmrHeaders(getCmrSessionToken()),
     body: JSON.stringify(sections),
   })
-  if (!res.ok) throw new Error('Failed to update sections')
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to update sections'))
   await reloadData()
 }
 
 // ---- Config ----
 
-export type PapillaryMode = 'blood_pool' | 'mass'
-
 export type CmrConfig = {
   papillary_mode: PapillaryMode
+  reference_preset: CmrReferencePreset
 }
 
 export async function fetchConfig(): Promise<CmrConfig> {
+  await reloadData()
   return localConfig()
 }
 
 export async function updateConfig(updates: Partial<CmrConfig>): Promise<void> {
-  const res = await fetch('/api/cmr-data/config', {
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data/config`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildCmrHeaders(getCmrSessionToken()),
     body: JSON.stringify(updates),
   })
-  if (!res.ok) throw new Error('Failed to update config')
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to update config'))
   await reloadData()
 }
 
@@ -246,12 +280,12 @@ export type CmrEditModeSave = {
 }
 
 export async function saveEditMode(payload: CmrEditModeSave): Promise<void> {
-  const res = await fetch('/api/cmr-data/edit-mode', {
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/reference-data/edit-mode`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildCmrHeaders(getCmrSessionToken()),
     body: JSON.stringify(payload),
   })
-  if (!res.ok) throw new Error('Failed to save edit mode changes')
+  if (!res.ok) throw new Error(await readReferenceDataError(res, 'Failed to save edit mode changes'))
   await reloadData()
 }
 
@@ -277,15 +311,38 @@ export type CmrExtractionResult = {
   measurements: CmrExtractedMeasurement[]
 }
 
+async function readExtractionError(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { detail?: string; error?: string }
+    const message = String(data.detail ?? data.error ?? '').trim()
+    if (message) return message
+  } catch {
+    // Fall through to text/status handling.
+  }
+
+  try {
+    const text = (await response.text()).trim()
+    if (text && !text.startsWith('<')) return text
+  } catch {
+    // Ignore text parsing failures.
+  }
+
+  return response.status ? `${fallback} (${response.status})` : fallback
+}
+
 export async function extractFromReport(reportText: string): Promise<CmrExtractionResult> {
-  const res = await fetch('/api/cmr-extract', {
+  const token = getCmrSessionToken()
+  if (!token) {
+    throw new Error('CMR session not found')
+  }
+
+  const res = await fetch(`${getCmrApiBase()}/v1/cmr/report-extraction`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ report_text: reportText }),
+    headers: buildCmrHeaders(token),
+    body: JSON.stringify({ reportText }),
   })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Unknown error' }))
-    throw new Error(err.error || 'Extraction failed')
+    throw new Error(await readExtractionError(res, 'Extraction failed'))
   }
   return res.json()
 }

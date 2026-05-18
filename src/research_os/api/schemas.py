@@ -3474,6 +3474,8 @@ class PublicationCollectionSummary(BaseModel):
     id: str
     name: str
     colour: str
+    subcollection_id: str | None = None
+    subcollection_name: str | None = None
 
 
 class PublicationCollectionsListResponse(BaseModel):

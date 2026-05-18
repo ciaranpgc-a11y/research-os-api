@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import shutil
+import json
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -2042,6 +2043,241 @@ def _sqlite_add_column_if_missing(
     return True
 
 
+def _sqlite_default_cmr_access_code_id(connection) -> str:
+    fallback_id = "admin"
+    if not _sqlite_table_exists(connection, "cmr_access_codes"):
+        return fallback_id
+
+    access_code_columns = _sqlite_table_columns(connection, "cmr_access_codes")
+    if "id" not in access_code_columns:
+        return fallback_id
+
+    if {"is_active", "created_at", "last_accessed_at"}.issubset(access_code_columns):
+        row = connection.execute(
+            text(
+                "SELECT id FROM cmr_access_codes "
+                "WHERE id != 'admin' AND COALESCE(is_active, 1) = 1 "
+                "ORDER BY "
+                "  CASE WHEN last_accessed_at IS NULL THEN 1 ELSE 0 END, "
+                "  last_accessed_at DESC, "
+                "  created_at DESC "
+                "LIMIT 1"
+            )
+        ).first()
+        if row and row[0]:
+            return str(row[0])
+
+    row = connection.execute(
+        text("SELECT id FROM cmr_access_codes WHERE id = 'admin' LIMIT 1")
+    ).first()
+    if row and row[0]:
+        return str(row[0])
+
+    if {
+        "name",
+        "code_hash",
+        "created_at",
+        "last_accessed_at",
+        "session_count",
+        "is_active",
+    }.issubset(access_code_columns):
+        connection.execute(
+            text(
+                "INSERT OR IGNORE INTO cmr_access_codes ("
+                "id, name, code_hash, created_at, last_accessed_at, session_count, is_active"
+                ") VALUES ("
+                "'admin', 'Admin', NULL, :created_at, NULL, 0, 1"
+                ")"
+            ),
+            {"created_at": _utcnow().isoformat()},
+        )
+    return fallback_id
+
+
+def _sqlite_ensure_cmr_cases_schema(connection) -> None:
+    if not _sqlite_table_exists(connection, "cmr_cases"):
+        return
+
+    columns = _sqlite_table_columns(connection, "cmr_cases")
+    if {"access_code_id", "title", "payload_json"}.issubset(columns):
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="patient_label",
+            column_sql="VARCHAR(255)",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="report_tag",
+            column_sql="VARCHAR(255)",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="study_date",
+            column_sql="VARCHAR(32)",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="status",
+            column_sql="VARCHAR(32)",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="last_completed_step",
+            column_sql="VARCHAR(64)",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="notes",
+            column_sql="TEXT",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="created_at",
+            column_sql="DATETIME",
+        )
+        _sqlite_add_column_if_missing(
+            connection,
+            table_name="cmr_cases",
+            column_name="updated_at",
+            column_sql="DATETIME",
+        )
+        connection.execute(
+            text(
+                "UPDATE cmr_cases SET title = 'Untitled report' "
+                "WHERE title IS NULL OR TRIM(title) = ''"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE cmr_cases SET status = 'draft' "
+                "WHERE status IS NULL OR TRIM(status) = ''"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_cmr_cases_access_code_id "
+                "ON cmr_cases (access_code_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_cmr_cases_status "
+                "ON cmr_cases (status)"
+            )
+        )
+        return
+
+    if "owner_user_id" not in columns:
+        return
+
+    legacy_table_name = "cmr_cases_legacy_pre_access_code"
+    if not _sqlite_table_exists(connection, legacy_table_name):
+        connection.execute(
+            text(f"ALTER TABLE cmr_cases RENAME TO {legacy_table_name}")
+        )
+
+    connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS cmr_cases ("
+            "id VARCHAR(36) NOT NULL PRIMARY KEY, "
+            "access_code_id VARCHAR(36) NOT NULL, "
+            "title VARCHAR(255) NOT NULL, "
+            "patient_label VARCHAR(255), "
+            "report_tag VARCHAR(255), "
+            "study_date VARCHAR(32), "
+            "status VARCHAR(32) NOT NULL, "
+            "last_completed_step VARCHAR(64), "
+            "payload_json JSON NOT NULL, "
+            "notes TEXT, "
+            "created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL, "
+            "FOREIGN KEY(access_code_id) REFERENCES cmr_access_codes (id) ON DELETE CASCADE"
+            ")"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_cmr_cases_access_code_id "
+            "ON cmr_cases (access_code_id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_cmr_cases_status "
+            "ON cmr_cases (status)"
+        )
+    )
+
+    migrated_access_code_id = _sqlite_default_cmr_access_code_id(connection)
+    default_payload = json.dumps(
+        {
+            "schemaVersion": 1,
+            "reportInput": {
+                "reportText": "",
+                "reportType": "standard",
+                "fourDFlow": False,
+                "nonContrast": False,
+                "fileName": None,
+            },
+            "extractionResult": None,
+            "previousStudies": [],
+            "previousStudiesVisible": True,
+        }
+    )
+    existing_ids = {
+        str(row[0])
+        for row in connection.execute(text("SELECT id FROM cmr_cases")).all()
+        if row and row[0]
+    }
+    legacy_rows = connection.execute(
+        text(
+            f"SELECT id, label, scan_date, notes, created_at, updated_at "
+            f"FROM {legacy_table_name}"
+        )
+    ).all()
+    for row in legacy_rows:
+        case_id = str(row[0] or "").strip()
+        if not case_id or case_id in existing_ids:
+            continue
+        label = str(row[1] or "").strip() or "Untitled report"
+        study_date = str(row[2]).strip() if row[2] is not None else None
+        notes = str(row[3]).strip() if row[3] is not None else None
+        created_at = row[4] or _utcnow().isoformat()
+        updated_at = row[5] or created_at
+        connection.execute(
+            text(
+                "INSERT INTO cmr_cases ("
+                "id, access_code_id, title, patient_label, report_tag, study_date, status, "
+                "last_completed_step, payload_json, notes, created_at, updated_at"
+                ") VALUES ("
+                ":id, :access_code_id, :title, :patient_label, :report_tag, :study_date, :status, "
+                ":last_completed_step, :payload_json, :notes, :created_at, :updated_at"
+                ")"
+            ),
+            {
+                "id": case_id,
+                "access_code_id": migrated_access_code_id,
+                "title": label,
+                "patient_label": label,
+                "report_tag": None,
+                "study_date": study_date,
+                "status": "draft",
+                "last_completed_step": "upload",
+                "payload_json": default_payload,
+                "notes": notes,
+                "created_at": created_at,
+                "updated_at": updated_at,
+            },
+        )
+
+
 def _ensure_sqlite_schema_compatibility(engine) -> None:
     if engine.dialect.name != "sqlite":
         return
@@ -2565,6 +2801,25 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                             ),
                             {"owner_user_id": only_user_id},
                         )
+
+        _sqlite_ensure_cmr_cases_schema(connection)
+
+        if _sqlite_table_exists(connection, "extract_study_recruitment"):
+            for col in ['notes', 'inx_rhc', 'inx_echo', 'inx_cmr', 'inx_cpex']:
+                _sqlite_add_column_if_missing(
+                    connection,
+                    table_name="extract_study_recruitment",
+                    column_name=col,
+                    column_sql="TEXT",
+                )
+
+        if _sqlite_table_exists(connection, "extract_cmr"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="extract_cmr",
+                column_name="measurements_json",
+                column_sql="TEXT",
+            )
 
 
 def _ensure_postgresql_schema_compatibility(engine) -> None:

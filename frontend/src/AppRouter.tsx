@@ -41,18 +41,47 @@ import { CmrReferenceDatabasePage } from '@/pages/cmr-reference-database-page'
 import { CmrNewReportPage } from '@/pages/cmr-new-report-page'
 import { CmrRwmaPage } from '@/pages/cmr-rwma-page'
 import { CmrLgePage } from '@/pages/cmr-lge-page'
+import { CmrPerfusionPage } from '@/pages/cmr-perfusion-page'
 import { CmrUploadReportPage } from '@/pages/cmr-upload-report-page'
 import { CmrValvesPage } from '@/pages/cmr-valves-page'
 import { CmrLvThrombusPage } from '@/pages/cmr-lv-thrombus-page'
 import { CmrPhPage } from '@/pages/cmr-ph-page'
 import { CmrLoginPage } from '@/pages/cmr-login-page'
 import { CmrAdminPage } from '@/pages/cmr-admin-page'
+import { CmrReportsPage } from '@/pages/cmr-reports-page'
+import { CmrReportOutputPage } from '@/pages/cmr-report-output-page'
 import {
   getCmrSessionToken,
   cmrCheckSession,
   clearCmrSession,
   isCmrSubdomain,
+  setCmrSession,
 } from '@/lib/cmr-auth'
+import {
+  getExtractSessionToken,
+  extractCheckSession,
+  clearExtractSession,
+  isExtractSubdomain,
+  setExtractSession,
+} from '@/lib/extract-auth'
+import { ExtractAdminPage } from '@/pages/extract-admin-page'
+import { ExtractCohortPage } from '@/pages/extract-cohort-page'
+import { ExtractLoginPage } from '@/pages/extract-login-page'
+import ExtractPatientDetailPage from '@/pages/extract-patient-detail-page'
+import ExtractPatientOverview from '@/pages/extract-patient-overview'
+import ExtractPatientRhc from '@/pages/extract-patient-rhc'
+import ExtractPatientEcho from '@/pages/extract-patient-echo'
+import ExtractPatientCmr from '@/pages/extract-patient-cmr'
+import ExtractPatientCpex from '@/pages/extract-patient-cpex'
+import ExtractPatientClinicalData from '@/pages/extract-patient-clinical-data'
+import ExtractPatientQuestionnaire from '@/pages/extract-patient-questionnaire'
+import ExtractPatientRecruitment from '@/pages/extract-patient-recruitment'
+import { ExtractExtractionPage } from '@/pages/extract-extraction-page'
+import { ExtractReferenceRhcPage } from '@/pages/extract-reference-rhc-page'
+import { ExtractReferenceEchoPage } from '@/pages/extract-reference-echo-page'
+import { ExtractLayout } from '@/components/layout/extract-layout'
+import { buildCmrCasePath, resolveCmrCaseSection, type CmrCaseSection } from '@/lib/cmr-case-routes'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
 const AUTH_ME_TIMEOUT_MS = 8000
@@ -99,6 +128,15 @@ function LandingOrWorkspace() {
     return <Navigate to="/cmr-login" replace />
   }
 
+  // Extract subdomain goes to login gate (or cohort if authenticated)
+  if (isExtractSubdomain()) {
+    const extractToken = getExtractSessionToken()
+    if (extractToken) {
+      return <Navigate to="/extract-cohort" replace />
+    }
+    return <Navigate to="/extract-login" replace />
+  }
+
   if (isAuthBypassEnabled()) {
     return <Navigate to="/profile/publications" replace />
   }
@@ -113,10 +151,12 @@ function LandingOrWorkspace() {
 function RequireCmrSession() {
   const [status, setStatus] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const location = useLocation()
+  const syncSessionScope = useCmrCaseStore((state) => state.syncSessionScope)
 
   useEffect(() => {
     const token = getCmrSessionToken()
     if (!token) {
+      syncSessionScope(null)
       setStatus('denied')
       return
     }
@@ -124,9 +164,45 @@ function RequireCmrSession() {
     cmrCheckSession(token).then((user) => {
       if (cancelled) return
       if (user) {
+        setCmrSession(token, user.name, user.is_admin, user.access_code_id)
+        syncSessionScope(`cmr-access:${user.access_code_id}`)
         setStatus('allowed')
       } else {
         clearCmrSession()
+        syncSessionScope(null)
+        setStatus('denied')
+      }
+    })
+    return () => { cancelled = true }
+  }, [location.pathname, syncSessionScope])
+
+  if (status === 'checking') {
+    return <div className="p-6 text-sm text-muted-foreground">Checking session...</div>
+  }
+  if (status === 'denied') {
+    return <Navigate to="/cmr-login" replace />
+  }
+  return <Outlet />
+}
+
+function RequireExtractSession() {
+  const [status, setStatus] = useState<'checking' | 'allowed' | 'denied'>('checking')
+  const location = useLocation()
+
+  useEffect(() => {
+    const token = getExtractSessionToken()
+    if (!token) {
+      setStatus('denied')
+      return
+    }
+    let cancelled = false
+    extractCheckSession(token).then((user) => {
+      if (cancelled) return
+      if (user) {
+        setExtractSession(token, user.name, user.is_admin, user.access_code_id)
+        setStatus('allowed')
+      } else {
+        clearExtractSession()
         setStatus('denied')
       }
     })
@@ -137,7 +213,49 @@ function RequireCmrSession() {
     return <div className="p-6 text-sm text-muted-foreground">Checking session...</div>
   }
   if (status === 'denied') {
-    return <Navigate to="/cmr-login" replace />
+    return <Navigate to="/extract-login" replace />
+  }
+  return <Outlet />
+}
+
+function LegacyCmrReportRedirect({ section }: { section: CmrCaseSection }) {
+  const activeCaseId = useCmrCaseStore((state) => state.activeCaseId)
+  if (!activeCaseId) {
+    return <Navigate to="/cmr-reports" replace />
+  }
+  return <Navigate to={buildCmrCasePath(activeCaseId, section)} replace />
+}
+
+function RequireCmrCase() {
+  const params = useParams<{ caseId: string }>()
+  const location = useLocation()
+  const caseId = params.caseId || ''
+  const activeCase = useCmrCaseStore((state) => state.activeCase)
+  const loadingCaseId = useCmrCaseStore((state) => state.loadingCaseId)
+  const caseError = useCmrCaseStore((state) => state.caseError)
+  const loadCase = useCmrCaseStore((state) => state.loadCase)
+  const patchActiveCaseMeta = useCmrCaseStore((state) => state.patchActiveCaseMeta)
+
+  useEffect(() => {
+    if (!caseId) return
+    void loadCase(caseId)
+  }, [caseId, loadCase])
+
+  useEffect(() => {
+    if (!activeCase || activeCase.id !== caseId) return
+    const section = resolveCmrCaseSection(location.pathname)
+    if (!section || activeCase.last_completed_step === section) return
+    patchActiveCaseMeta({ last_completed_step: section })
+  }, [activeCase, caseId, location.pathname, patchActiveCaseMeta])
+
+  if (!caseId) {
+    return <Navigate to="/cmr-reports" replace />
+  }
+  if (caseError && loadingCaseId === null && (!activeCase || activeCase.id !== caseId)) {
+    return <Navigate to="/cmr-reports" replace />
+  }
+  if (loadingCaseId === caseId || !activeCase || activeCase.id !== caseId) {
+    return <div className="p-6 text-sm text-muted-foreground">Loading report...</div>
   }
   return <Outlet />
 }
@@ -259,31 +377,81 @@ export function AppRouter() {
         <Route element={<RequireCmrSession />}>
           <Route element={<CmrReferenceLayout />}>
             <Route path="/cmr-admin" element={<CmrAdminPage />} />
+            <Route path="/cmr-reports" element={<CmrReportsPage />} />
             <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
             <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
-            <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
-            <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
-            <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
-            <Route path="/cmr-lge" element={<CmrLgePage />} />
-            <Route path="/cmr-valves" element={<CmrValvesPage />} />
-            <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
-            <Route path="/cmr-ph" element={<CmrPhPage />} />
+            <Route path="/cmr-upload-report" element={<LegacyCmrReportRedirect section="upload" />} />
+            <Route path="/cmr-new-report" element={<LegacyCmrReportRedirect section="report" />} />
+            <Route path="/cmr-rwma" element={<LegacyCmrReportRedirect section="rwma" />} />
+            <Route path="/cmr-lge" element={<LegacyCmrReportRedirect section="lge" />} />
+            <Route path="/cmr-perfusion" element={<LegacyCmrReportRedirect section="perfusion" />} />
+            <Route path="/cmr-valves" element={<LegacyCmrReportRedirect section="valves" />} />
+            <Route path="/cmr-lv-thrombus" element={<LegacyCmrReportRedirect section="lv-thrombus" />} />
+            <Route path="/cmr-ph" element={<LegacyCmrReportRedirect section="ph" />} />
+            <Route path="/cmr/cases/:caseId" element={<RequireCmrCase />}>
+              <Route path="upload" element={<CmrUploadReportPage />} />
+              <Route path="report" element={<CmrNewReportPage />} />
+              <Route path="rwma" element={<CmrRwmaPage />} />
+              <Route path="lge" element={<CmrLgePage />} />
+              <Route path="perfusion" element={<CmrPerfusionPage />} />
+              <Route path="valves" element={<CmrValvesPage />} />
+              <Route path="lv-thrombus" element={<CmrLvThrombusPage />} />
+              <Route path="ph" element={<CmrPhPage />} />
+              <Route path="output" element={<CmrReportOutputPage />} />
+            </Route>
           </Route>
         </Route>
       ) : (
         <Route element={<CmrReferenceLayout />}>
           <Route path="/cmr-admin" element={<CmrAdminPage />} />
+          <Route path="/cmr-reports" element={<CmrReportsPage />} />
           <Route path="/cmr-reference-table" element={<CmrReferenceTablePage />} />
           <Route path="/cmr-reference-database" element={<CmrReferenceDatabasePage />} />
-          <Route path="/cmr-upload-report" element={<CmrUploadReportPage />} />
-          <Route path="/cmr-new-report" element={<CmrNewReportPage />} />
-          <Route path="/cmr-rwma" element={<CmrRwmaPage />} />
-          <Route path="/cmr-lge" element={<CmrLgePage />} />
-          <Route path="/cmr-valves" element={<CmrValvesPage />} />
-          <Route path="/cmr-lv-thrombus" element={<CmrLvThrombusPage />} />
-          <Route path="/cmr-ph" element={<CmrPhPage />} />
+          <Route path="/cmr-upload-report" element={<LegacyCmrReportRedirect section="upload" />} />
+          <Route path="/cmr-new-report" element={<LegacyCmrReportRedirect section="report" />} />
+          <Route path="/cmr-rwma" element={<LegacyCmrReportRedirect section="rwma" />} />
+          <Route path="/cmr-lge" element={<LegacyCmrReportRedirect section="lge" />} />
+          <Route path="/cmr-perfusion" element={<LegacyCmrReportRedirect section="perfusion" />} />
+          <Route path="/cmr-valves" element={<LegacyCmrReportRedirect section="valves" />} />
+          <Route path="/cmr-lv-thrombus" element={<LegacyCmrReportRedirect section="lv-thrombus" />} />
+          <Route path="/cmr-ph" element={<LegacyCmrReportRedirect section="ph" />} />
+          <Route path="/cmr/cases/:caseId" element={<RequireCmrCase />}>
+            <Route path="upload" element={<CmrUploadReportPage />} />
+            <Route path="report" element={<CmrNewReportPage />} />
+            <Route path="rwma" element={<CmrRwmaPage />} />
+            <Route path="lge" element={<CmrLgePage />} />
+            <Route path="perfusion" element={<CmrPerfusionPage />} />
+            <Route path="valves" element={<CmrValvesPage />} />
+            <Route path="lv-thrombus" element={<CmrLvThrombusPage />} />
+            <Route path="ph" element={<CmrPhPage />} />
+            <Route path="output" element={<CmrReportOutputPage />} />
+          </Route>
         </Route>
       )}
+
+      {/* Extract auth routes */}
+      <Route path="/extract-login" element={<ExtractLoginPage />} />
+
+      {/* Extract protected routes */}
+      <Route element={<RequireExtractSession />}>
+        <Route element={<ExtractLayout />}>
+          <Route path="/extract-admin" element={<ExtractAdminPage />} />
+          <Route path="/extract-cohort" element={<ExtractCohortPage />} />
+          <Route path="/extract-new" element={<ExtractExtractionPage />} />
+          <Route path="/extract-patient/:hn" element={<ExtractPatientDetailPage />}>
+            <Route index element={<ExtractPatientOverview />} />
+            <Route path="clinical-data" element={<ExtractPatientClinicalData />} />
+            <Route path="rhc" element={<ExtractPatientRhc />} />
+            <Route path="echo" element={<ExtractPatientEcho />} />
+            <Route path="cmr" element={<ExtractPatientCmr />} />
+            <Route path="cpex" element={<ExtractPatientCpex />} />
+            <Route path="questionnaire" element={<ExtractPatientQuestionnaire />} />
+            <Route path="recruitment" element={<ExtractPatientRecruitment />} />
+          </Route>
+          <Route path="/extract-reference-rhc" element={<ExtractReferenceRhcPage />} />
+          <Route path="/extract-reference-echo" element={<ExtractReferenceEchoPage />} />
+        </Route>
+      </Route>
 
       <Route element={<RequireSignIn />}>
         <Route path="/workspaces" element={<WorkspacesPage />} />
@@ -345,7 +513,7 @@ export function AppRouter() {
         <Route path="/agent-logs" element={<WorkspaceRedirect suffix="agent-logs" />} />
       </Route>
 
-      <Route path="*" element={<Navigate to={isCmrSubdomain() ? '/cmr-login' : '/'} replace />} />
+      <Route path="*" element={<Navigate to={isCmrSubdomain() ? '/cmr-login' : isExtractSubdomain() ? '/extract-login' : '/'} replace />} />
     </Routes>
   )
 }

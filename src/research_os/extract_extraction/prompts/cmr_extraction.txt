@@ -1,0 +1,105 @@
+Extract structured cardiac MRI data from the attached source into the provided CMRRecord schema.
+
+Rules:
+- Extract only values and findings that are explicitly present in the source.
+- Do not infer missing measurements, diagnoses, or tissue characterization from vague wording.
+- Do not calculate derived clinical diagnoses from weak imaging clues alone.
+- Do not calculate measurements from other reported measurements unless the schema explicitly requires a simple deterministic backfill such as BSA from height and weight.
+- Preserve uncertainty conservatively:
+  - leave ambiguous structured fields as null
+  - add the field name to `uncertain_fields`
+  - add a short explanation to `extraction_warnings`
+- If a `Conclusions`, `Impression`, `Summary`, or similarly labelled final section is present, copy it exactly into `conclusions`.
+- Split numbered conclusion points into separate lines inside `conclusions` when helpful.
+- Populate `cmr_class`, `primary_dx`, and `secondary_dx` as short analytic summary outputs only when the report supports them.
+- When extraction is incomplete, ambiguous, internally inconsistent, or based on weak wording, populate `uncertain_fields` and `extraction_warnings` with short concrete notes.
+- Do not include normal reference ranges in primary patient measurement fields unless the patient-specific measured value is explicitly shown.
+- If tables include both measured values and reference ranges, capture only the patient-specific values.
+- If a conclusion or narrative uses categorical wording rather than a number, use a short normalized clinical label when the target field is a coded descriptive field.
+- Do not copy full narrative sentences into coded descriptive fields when a short normalized label is clearly supported.
+- Use title-cased normalized labels for coded descriptive fields, for example `Normal`, `Mildly dilated`, `Moderately dilated`, `Severely dilated`, `Normal`, `Mildly impaired`, `Moderately impaired`, `Severely impaired`, `Present`, `Absent`, `Subendocardial`, `Transmural`, `Mid-wall`, `Epicardial`, `Patchy`, `Diffuse`, `Ischaemic`, `Non-ischaemic`, `No`, `Yes`, `None`.
+- Keep raw narrative wording in text fields when that is safer than forcing a weak categorical mapping.
+
+Normalization and coding policy:
+- Chamber size and function fields should prefer short normalized labels rather than copied sentences when the narrative is clear.
+- If EF is reported as a range, do not convert it into a midpoint numeric value. Leave the numeric EF field null and preserve the range in the matching visual/text field when the schema includes one.
+- If BSA is not explicitly provided but both height and weight are available, calculate BSA using the Mosteller formula for deterministic backfills.
+- If indexed ventricular or atrial values are given and height/weight allow BSA calculation, convert them into the matching non-indexed schema fields when the schema expects absolute values.
+- If non-indexed ventricular volumes or mass are given and height/weight allow BSA calculation, also populate the matching indexed fields when the schema includes them.
+- If heart rate is reported as a range, store the arithmetic mean in `heart_rate`.
+- If `4D flow` is explicitly mentioned, populate `flow` with `4D-flow`.
+- If `Flow (2D-PC)` or equivalent 2D phase-contrast flow is explicitly mentioned, populate `flow` with `2D-flow`.
+- If late gadolinium enhancement or gadolinium contrast is explicitly described, populate `contrast` accordingly even if the agent brand is not stated.
+- If both `rvedvi` and `lvedvi` are available, calculate `rv_lv_ratio` as `rvedvi / lvedvi`. If only absolute RV/LV EDV values are available, use `rvedv / lvedv`.
+- If the report explicitly states that the left and right atria are normal in size, populate both `la_size` and `ra_size` as `Normal`.
+- Late gadolinium enhancement, scar, fibrosis, edema, perfusion, mapping, and thrombus findings should only be populated when they are explicitly stated or clearly described in a dedicated findings section.
+- Do not overcall myocarditis, infarction, amyloid, sarcoid, HCM, DCM, ARVC, constriction, or viability from isolated measurements alone unless the report clearly states the pattern.
+- If tissue characterization is described with a distribution pattern, preserve that concise pattern, for example `Mid-wall septal LGE`, `Subendocardial inferolateral LGE`, `Diffuse elevated native T1`, or `No LGE`.
+- Valve description fields should be concise morphology/function phrases rather than copied paragraphs.
+- Do not fill `secondary_diagnosis` with filler phrases such as `otherwise normal`, `normal study otherwise`, `incidental findings only`, or similar non-pathology summaries.
+- If no genuinely relevant secondary diagnosis is present, leave `secondary_diagnosis` blank.
+
+Suggested top-level case types:
+- `Normal`
+- `Limited / non-diagnostic`
+- `Ischaemic`
+- `Non-ischaemic cardiomyopathy`
+- `Myocarditis / inflammatory`
+- `Hypertrophic cardiomyopathy / LVH`
+- `Infiltrative / storage`
+- `Pericardial disease`
+- `Congenital heart disease`
+- `Valve disease`
+- `Pulmonary hypertension / right heart`
+- `Mass / thrombus`
+- `Post-operative / prosthetic`
+- `Other`
+
+Case-bucketing policy:
+- `primary_diagnosis` should be the dominant disease-level label within the broad case type, not an over-detailed sentence.
+- Do not promote clinical-history `query` / `rule out` wording into `primary_diagnosis`.
+- `secondary_diagnosis` should contain at most one additional co-dominant disease-level label when one is clearly worth preserving.
+- Use precedence rules. Major scar/infarction patterns, active inflammatory patterns, infiltrative disease, clear cardiomyopathy phenotypes, moderate-or-worse dominant valve lesions, major congenital disease, constriction, significant thrombus/mass, and major right-heart disease should override minor incidental abnormalities.
+- Avoid overly clever diagnosis strings such as multi-lesion sentences. Keep the bucket broad and let the detailed structured fields carry the granularity.
+- HF syndrome terms such as `HFrEF`, `HFmrEF`, `HFpEF`, raised filling pressure, atrial dilatation, RV insertion-point fibrosis, D-shaped LV, septal flattening, or pericardial adiposity are context/findings, not diagnosis labels.
+- Moderate-or-worse valve disease can appear in `primary_diagnosis` or `secondary_diagnosis` when the valve lesion is the dominant conclusion-level disease. Mild incidental valve disease should not be promoted into diagnosis buckets.
+
+CMR-specific mapping guidance:
+- Header identifiers such as `Hospital Number`, `Hosp No`, `MRN`, `DOB`, `Date of Birth`, `Study Date`, `Date`, `Consultant`, and `Indication` map to their obvious schema equivalents.
+- Format `date_cmr` and `date_of_birth` as `dd/mm/yyyy` when a valid date is visible.
+- Capture `indication` as the concise stated reason for the scan or the short `Clinical History` summary when present.
+- `Rhythm`, `HR`, `Heart rate`, `BP`, `Height`, `Weight`, contrast agent, contrast dose, scanner strength, and stress/rest protocol details should be captured when explicit.
+- Prefer measured ventricular volumes, indexed volumes, stroke volumes, mass, and EF values from the formal measurement section over prose summaries when both are present.
+- Distinguish absolute from indexed measurements carefully. Do not place indexed values into non-indexed fields or vice versa.
+- When a formal table provides only indexed ventricular volumes/stroke volumes/mass, populate the indexed fields from the table and leave the non-indexed fields for deterministic BSA conversion.
+- `TAPSE` should be captured explicitly when reported.
+- Preserve the report’s explicit unit meaning. Typical CMR units include:
+  - volumes: `mL`
+  - indexed volumes: `mL/m2`
+  - mass: `g`
+  - indexed mass: `g/m2`
+  - linear dimensions: `mm`
+  - flow velocities: `m/s`
+  - mapping values: `ms`
+  - ECV: `%`
+- If the report gives both `rest` and `stress` perfusion findings, keep them separate when the schema allows.
+- If the report explicitly states `no LGE`, `no myocardial edema`, `no inducible ischaemia`, `no thrombus`, or `no pericardial effusion`, code the corresponding structured field explicitly as negative/absent when the schema allows.
+- For LGE/scar pattern fields, preserve both presence and pattern/distribution when explicit:
+  - `Subendocardial`
+  - `Transmural`
+  - `Mid-wall`
+  - `Epicardial`
+  - `Patchy`
+  - `Diffuse`
+- For infarct viability style wording, preserve the explicit transmural extent or viability statement only when clearly stated.
+- For mapping values such as native T1, T2, T2*, and ECV, capture the numeric values when explicit and preserve the interpretation separately only if the schema has a dedicated interpretation field.
+- If iron assessment is described using T2* with a threshold interpretation, keep the numeric T2* value and any explicit interpretation, but do not infer iron overload from the number alone unless the report explicitly states it.
+- If a perfusion defect is described, preserve whether it is inducible/reversible or fixed/scar-related when the wording is explicit.
+- If pericardial disease is described, preserve whether the issue is effusion, thickening, inflammation, or constrictive physiology.
+- If congenital or post-surgical anatomy is described, preserve the dominant repair/anatomy label concisely rather than copying the full operative history.
+
+Important:
+- Many CMR reports contain both narrative sections and structured measurement tables.
+- The final impression/conclusion section is a high-priority source of truth and should be preserved exactly when visible.
+- If you cannot confidently separate patient-specific measurements from normal ranges, leave the structured measurement field null and add a warning.
+- If a field is clinically important but the wording is too ambiguous to map safely, leave it null and explain why in `extraction_warnings`.

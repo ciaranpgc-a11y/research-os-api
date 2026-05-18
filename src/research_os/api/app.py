@@ -859,6 +859,8 @@ default_allow_origins = [
     "http://localhost:6007",
     "https://app.axiomos.studio",
     "https://cmr.axiomos.studio",
+    "http://extract.localhost:5173",
+    "https://extract.axiomos.studio",
 ]
 configured_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 allow_origins = list(default_allow_origins)
@@ -923,7 +925,33 @@ app.add_middleware(
 
 # Mount CMR auth router (separate from Axiomos auth)
 from research_os.cmr_auth.router import router as cmr_router
+from research_os.cmr_cases.router import router as cmr_cases_router
+from research_os.cmr_reference_data.router import router as cmr_reference_data_router
+from research_os.cmr_summaries.router import router as cmr_summaries_router
+from research_os.extract_auth.router import router as extract_auth_router
+from research_os.extract_patients.router import router as extract_patients_router
+from research_os.extract_records.router import router as extract_records_router
+from research_os.extract_recruitment.router import router as extract_recruitment_router
+from research_os.extract_questionnaire.router import router as extract_questionnaire_router
+from research_os.extract_clinical_data.router import router as extract_clinical_data_router
+from research_os.extract_source_files.router import router as extract_source_files_router
+from research_os.extract_tracking.router import router as extract_tracking_router
+from research_os.extract_bulk.router import router as extract_bulk_router
+from research_os.extract_extraction.router import router as extract_extraction_router
 app.include_router(cmr_router)
+app.include_router(cmr_cases_router)
+app.include_router(cmr_reference_data_router)
+app.include_router(cmr_summaries_router)
+app.include_router(extract_auth_router)
+app.include_router(extract_patients_router)
+app.include_router(extract_records_router)
+app.include_router(extract_recruitment_router)
+app.include_router(extract_questionnaire_router)
+app.include_router(extract_clinical_data_router)
+app.include_router(extract_source_files_router)
+app.include_router(extract_tracking_router)
+app.include_router(extract_bulk_router)
+app.include_router(extract_extraction_router)
 
 
 @app.middleware("http")

@@ -9,3 +9,8 @@ dist/
 build/
 *.egg-info/
 .env
+node_modules/
+frontend/node_modules/
+frontend/_stale_backup_*/
+.codex-deploy-backups/
+.deploy-backups/

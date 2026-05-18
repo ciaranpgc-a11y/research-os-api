@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { CmrMark } from '@/components/layout/cmr-mark'
 import { Button } from '@/components/ui'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
+import { useCmrCaseStore } from '@/store/use-cmr-case-store'
 import { cn } from '@/lib/utils'
 import { isCmrSubdomain, getCmrSessionToken, cmrLogout, isCmrAdmin } from '@/lib/cmr-auth'
 
@@ -21,19 +22,29 @@ const utilityButtonClass =
 export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const flushActiveCase = useCmrCaseStore((state) => state.flushActiveCase)
+  const syncSessionScope = useCmrCaseStore((state) => state.syncSessionScope)
 
   const isReference = pathname === '/cmr-reference-table'
+  const isReportsSection =
+    pathname === '/cmr-reports'
+    || pathname.startsWith('/cmr/cases/')
+    || pathname === '/cmr-upload-report'
+    || pathname === '/cmr-new-report'
+    || pathname === '/cmr-rwma'
+    || pathname === '/cmr-lge'
+    || pathname === '/cmr-perfusion'
+    || pathname === '/cmr-valves'
+    || pathname === '/cmr-lv-thrombus'
+    || pathname === '/cmr-ph'
   const isRefDb = pathname === '/cmr-reference-database'
   const isAdminPage = pathname === '/cmr-admin'
-  const isNewReport = [
-    '/cmr-upload-report',
-    '/cmr-new-report',
-    '/cmr-rwma',
-    '/cmr-lge',
-    '/cmr-valves',
-    '/cmr-lv-thrombus',
-    '/cmr-ph',
-  ].includes(pathname)
+
+  const navigateWithAutosave = async (nextPath: string) => {
+    const saved = await flushActiveCase()
+    if (!saved) return
+    navigate(nextPath)
+  }
 
   return (
     <header className="border-b border-[hsl(var(--stroke-soft)/0.82)] bg-card/95 backdrop-blur">
@@ -66,15 +77,27 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
           <nav className="hidden items-center gap-[var(--header-gap-tight)] xl:flex">
             <button
               type="button"
-              onClick={() => navigate('/cmr-reference-table')}
+              onClick={() => { void navigateWithAutosave('/cmr-reference-table') }}
               className={cn(topNavItemBase, topNavItemProfile, isReference && topNavItemActive)}
             >
               Reference
             </button>
+            <button
+              type="button"
+              onClick={() => { void navigateWithAutosave('/cmr-reports') }}
+              className={cn(topNavItemBase, 'house-top-nav-item-report', isReportsSection && topNavItemActive)}
+            >
+              Reports
+            </button>
+          </nav>
+        </div>
+
+        <div className="ml-[var(--header-gap-group)] hidden min-w-0 flex-1 items-center gap-[var(--header-gap-group)] md:flex">
+          <nav className="hidden items-center gap-[var(--header-gap-tight)] xl:flex">
             {(!isCmrSubdomain() || isCmrAdmin()) && (
               <button
                 type="button"
-                onClick={() => navigate('/cmr-reference-database')}
+                onClick={() => { void navigateWithAutosave('/cmr-reference-database') }}
                 className={cn(topNavItemBase, 'house-top-nav-item-learning-centre', isRefDb && topNavItemActive)}
               >
                 Reference Database
@@ -83,35 +106,25 @@ export function CmrTopBar({ onOpenLeftNav }: CmrTopBarProps) {
             {isCmrSubdomain() && getCmrSessionToken() && isCmrAdmin() && (
               <button
                 type="button"
-                onClick={() => navigate('/cmr-admin')}
+                onClick={() => { void navigateWithAutosave('/cmr-admin') }}
                 className={cn(topNavItemBase, 'house-top-nav-item-admin', isAdminPage && topNavItemActive)}
               >
                 Admin
               </button>
             )}
           </nav>
-        </div>
 
-        <div className="ml-[var(--header-gap-group)] hidden min-w-0 flex-1 items-center gap-[var(--header-gap-group)] md:flex">
           <div className="flex-1" />
-          <button
-            type="button"
-            onClick={() => navigate('/cmr-upload-report')}
-            className={cn(
-              topNavItemBase,
-              'house-top-nav-item-report',
-              isNewReport && topNavItemActive,
-            )}
-          >
-            New Report
-          </button>
 
           {isCmrSubdomain() && getCmrSessionToken() && (
             <div className="flex items-center gap-2">
               <button
                 onClick={async () => {
+                  const saved = await flushActiveCase()
+                  if (!saved) return
                   const token = getCmrSessionToken()
                   if (token) await cmrLogout(token)
+                  syncSessionScope(null)
                   window.location.href = '/cmr-login'
                 }}
                 className="text-xs text-muted-foreground underline hover:text-foreground"

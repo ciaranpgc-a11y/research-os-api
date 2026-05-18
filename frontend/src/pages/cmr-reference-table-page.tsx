@@ -229,11 +229,8 @@ export function CmrReferenceTablePage() {
   const [selectedParam, setSelectedParam] = useState<CmrCanonicalParam | null>(null)
   const [expandedNested, setExpandedNested] = useState<Set<string>>(new Set())
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
-
-  // Load config on mount
-  useEffect(() => {
-    fetchConfig().then((c) => setPapMode(c.papillary_mode)).catch(() => {})
-  }, [])
+  const hasLoadedReferenceDataRef = useRef(false)
+  const papModeHasLocalOverrideRef = useRef(false)
 
   const toggleCollapse = (key: string) => {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -241,21 +238,46 @@ export function CmrReferenceTablePage() {
 
   const load = useCallback(async () => {
     // Only show loading spinner on initial load — keep existing data visible during filter changes
-    if (!data) setLoading(true)
+    if (!hasLoadedReferenceDataRef.current) setLoading(true)
     try {
       const age = ageStr ? parseFloat(ageStr) : undefined
-      const result = await fetchReferenceParameters(sex, age)
+      const result = await fetchReferenceParameters(sex, age, papMode)
       setData(result)
     } catch {
       // ignore
     } finally {
+      hasLoadedReferenceDataRef.current = true
       setLoading(false)
     }
-  }, [sex, ageStr, papMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ageStr, papMode, sex])
+
+  const handlePapModeChange = useCallback(async (nextMode: PapillaryMode) => {
+    if (nextMode === papMode) return
+    papModeHasLocalOverrideRef.current = true
+    setPapMode(nextMode)
+    try {
+      await updateConfig({ papillary_mode: nextMode })
+    } catch {
+      // Keep the local toggle responsive even if persistence fails.
+    }
+  }, [papMode])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Load config on mount
+  useEffect(() => {
+    let cancelled = false
+    void fetchConfig().then((c) => {
+      if (!cancelled && !papModeHasLocalOverrideRef.current) {
+        setPapMode(c.papillary_mode)
+      }
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Derive nesting relationships from the data's nested_under field
   const nestedParamMap = useMemo(() => data ? buildNestedParamMap(data.parameters) : {}, [data])
@@ -335,7 +357,7 @@ export function CmrReferenceTablePage() {
             <button
               key={mode}
               type="button"
-              onClick={() => { setPapMode(mode); void updateConfig({ papillary_mode: mode }) }}
+              onClick={() => { void handlePapModeChange(mode) }}
               className={cn(
                 'rounded-full px-4 py-1.5 text-xs font-medium transition-all',
                 papMode === mode

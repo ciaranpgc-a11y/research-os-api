@@ -461,18 +461,21 @@
     --top-nav-hover-bg-admin: hsl(var(--tone-accent-200) / 0.34);
     --top-nav-hover-bg-opportunities: hsl(var(--tone-danger-200) / 0.34);
     --top-nav-hover-bg-report: hsl(var(--tone-danger-200) / 0.34);
+    --top-nav-hover-bg-extract: hsl(var(--tone-positive-200) / 0.34);
     --top-nav-active-bg-workspace: hsl(var(--section-style-workspace-accent) / 0.18);
     --top-nav-active-bg-profile: hsl(var(--section-style-profile-accent) / 0.18);
     --top-nav-active-bg-learning-centre: hsl(var(--section-style-learning-centre-accent) / 0.18);
     --top-nav-active-bg-admin: hsl(var(--section-style-admin-accent) / 0.18);
     --top-nav-active-bg-opportunities: hsl(var(--section-style-opportunities-accent) / 0.18);
     --top-nav-active-bg-report: hsl(var(--section-style-report-accent) / 0.18);
+    --top-nav-active-bg-extract: hsl(var(--section-style-extract-accent) / 0.18);
     --section-style-workspace-accent: var(--tone-accent-400);
     --section-style-profile-accent: var(--tone-positive-400);
     --section-style-learning-centre-accent: var(--tone-warning-400);
     --section-style-admin-accent: var(--tone-accent-700);
     --section-style-opportunities-accent: var(--tone-danger-400);
     --section-style-report-accent: var(--tone-danger-400);
+    --section-style-extract-accent: var(--tone-danger-400);
     --house-select-accent: var(--section-style-profile-accent);
     --form-control-border: hsl(var(--border));
     --form-control-border-hover: hsl(var(--border));
@@ -490,6 +493,7 @@
     --top-nav-accent-admin: var(--section-style-admin-accent);
     --top-nav-accent-opportunities: var(--section-style-opportunities-accent);
     --top-nav-accent-report: var(--section-style-report-accent);
+    --top-nav-accent-extract: var(--section-style-extract-accent);
   }
 
   .dark {
@@ -1832,6 +1836,27 @@
     --house-top-nav-active-bg: var(--top-nav-active-bg-opportunities);
     --house-top-nav-hover-bg: var(--top-nav-hover-bg-opportunities);
     --house-top-nav-hover-color: hsl(var(--top-nav-accent-opportunities));
+  }
+
+  .house-top-nav-item-extract {
+    --house-top-nav-accent: var(--top-nav-accent-extract);
+    --house-top-nav-active-bg: var(--top-nav-active-bg-extract);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-extract);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-extract));
+  }
+
+  .house-top-nav-item-extract-ref {
+    --house-top-nav-accent: var(--top-nav-accent-learning-centre);
+    --house-top-nav-active-bg: var(--top-nav-active-bg-learning-centre);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-learning-centre);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-learning-centre));
+  }
+
+  .house-top-nav-item-extract-admin {
+    --house-top-nav-accent: var(--top-nav-accent-admin);
+    --house-top-nav-active-bg: var(--top-nav-active-bg-admin);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-admin);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-admin));
   }
 
   .house-top-utility-button {

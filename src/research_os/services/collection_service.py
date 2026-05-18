@@ -473,8 +473,9 @@ def list_publication_collections(user_id: str, work_id: str) -> list[dict[str, A
     with session_scope() as session:
         rows = (
             session.execute(
-                select(CollectionMembership, Collection)
+                select(CollectionMembership, Collection, Subcollection.name)
                 .join(Collection, CollectionMembership.collection_id == Collection.id)
+                .outerjoin(Subcollection, CollectionMembership.subcollection_id == Subcollection.id)
                 .where(
                     CollectionMembership.work_id == work_id,
                     Collection.user_id == user_id,
@@ -484,7 +485,7 @@ def list_publication_collections(user_id: str, work_id: str) -> list[dict[str, A
         )
         seen: set[str] = set()
         result: list[dict[str, Any]] = []
-        for m, col in rows:
+        for m, col, subcollection_name in rows:
             if col.id in seen:
                 continue
             seen.add(col.id)
@@ -492,6 +493,8 @@ def list_publication_collections(user_id: str, work_id: str) -> list[dict[str, A
                 "id": col.id,
                 "name": col.name,
                 "colour": col.colour,
+                "subcollection_id": m.subcollection_id,
+                "subcollection_name": subcollection_name,
             })
         return result
 
@@ -519,8 +522,11 @@ def list_publication_collections_batch(
                     Collection.id,
                     Collection.name,
                     Collection.colour,
+                    CollectionMembership.subcollection_id,
+                    Subcollection.name,
                 )
                 .join(Collection, CollectionMembership.collection_id == Collection.id)
+                .outerjoin(Subcollection, CollectionMembership.subcollection_id == Subcollection.id)
                 .where(
                     CollectionMembership.work_id.in_(ordered_work_ids),
                     Collection.user_id == user_id,
@@ -538,7 +544,7 @@ def list_publication_collections_batch(
     seen_collections_by_work: dict[str, set[str]] = {
         work_id: set() for work_id in ordered_work_ids
     }
-    for work_id, collection_id, name, colour in rows:
+    for work_id, collection_id, name, colour, subcollection_id, subcollection_name in rows:
         if work_id not in grouped:
             continue
         if collection_id in seen_collections_by_work[work_id]:
@@ -548,6 +554,8 @@ def list_publication_collections_batch(
             "id": collection_id,
             "name": name,
             "colour": colour,
+            "subcollection_id": subcollection_id,
+            "subcollection_name": subcollection_name,
         })
 
     return [
