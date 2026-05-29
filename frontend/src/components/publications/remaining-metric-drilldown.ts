@@ -127,6 +127,7 @@ export type ImpactConcentrationDrilldownStats = {
   totalPublications: number
   uncitedPublicationsCount: number
   uncitedPublicationsPct: number
+  lorenzPoints: Array<{ paperFraction: number; citationFraction: number }>
   topPapers: Array<{
     workId: string
     title: string
@@ -690,6 +691,29 @@ export function buildMomentumDrilldownStats(tile: PublicationMetricTilePayload):
   }
 }
 
+function buildLorenzPoints(citationCounts: number[]): Array<{ paperFraction: number; citationFraction: number }> {
+  const sorted = citationCounts
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right)
+  const paperCount = sorted.length
+  const total = sorted.reduce((sum, value) => sum + value, 0)
+  if (paperCount === 0 || total <= 0) {
+    return []
+  }
+  const points: Array<{ paperFraction: number; citationFraction: number }> = [
+    { paperFraction: 0, citationFraction: 0 },
+  ]
+  let cumulative = 0
+  sorted.forEach((value, index) => {
+    cumulative += value
+    points.push({
+      paperFraction: (index + 1) / paperCount,
+      citationFraction: cumulative / total,
+    })
+  })
+  return points
+}
+
 export function buildImpactConcentrationDrilldownStats(tile: PublicationMetricTilePayload): ImpactConcentrationDrilldownStats {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const drilldown = (tile.drilldown || {}) as Record<string, unknown>
@@ -737,6 +761,7 @@ export function buildImpactConcentrationDrilldownStats(tile: PublicationMetricTi
       0,
       parseMetricNumber(intermediate.uncited_publications_pct ?? chartData.uncited_publications_pct) ?? 0,
     ),
+    lorenzPoints: buildLorenzPoints(publications.map((publication) => publication.citations)),
     topPapers,
   }
 }
