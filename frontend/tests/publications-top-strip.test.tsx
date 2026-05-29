@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildPublicationProductionPhaseStats,
@@ -159,33 +159,40 @@ function buildHIndexTile(overrides: Partial<PublicationMetricTilePayload> = {}):
 
 describe('buildTotalCitationsHeadlineMetricTiles', () => {
   it('uses the numeric tile value when display strings are comma-formatted', () => {
-    const metrics = buildTotalCitationsHeadlineMetricTiles(buildTotalCitationsTile())
-    const labels = metrics.map((metric) => metric.label)
+    // Freeze the clock so the year-bearing labels (projected/best year) stay deterministic.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(Date.UTC(2026, 2, 7)))
+    try {
+      const metrics = buildTotalCitationsHeadlineMetricTiles(buildTotalCitationsTile())
+      const labels = metrics.map((metric) => metric.label)
 
-    expect(metrics.find((metric) => metric.label === 'Total citations')?.value).toBe('1,234')
-    expect(metrics.find((metric) => metric.label === 'Citations per paper')?.value).toBe('246.8')
-    expect(metrics.find((metric) => metric.label === 'Best year (2025)')?.value).toBe('50')
-    expect(metrics.find((metric) => metric.label === 'Recent concentration')?.value).toBe('94%')
-    expect(metrics.find((metric) => metric.label === 'Top cited paper')?.value).toBe('100')
-    expect(metrics.find((metric) => metric.label === 'Projected 2026')?.value).toBe('65')
-    expect(labels).toEqual([
-      'Total citations',
-      'Projected 2026',
-      'Last 1 year (rolling)',
-      'Year-to-date',
-      'Citations per paper',
-      'Recent concentration',
-      'Top cited paper',
-      'Best year (2025)',
-    ])
-    expect(metrics.some((metric) => metric.label === 'Active years')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Mean yearly citations')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Median citations')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Uncited papers')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Newly cited papers (12m)')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Citation half-life proxy')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Last 3 years (rolling)')).toBe(false)
-    expect(metrics.some((metric) => metric.label === 'Last 5 years (rolling)')).toBe(false)
+      expect(metrics.find((metric) => metric.label === 'Total citations')?.value).toBe('1,234')
+      expect(metrics.find((metric) => metric.label === 'Citations per publication')?.value).toBe('246.8')
+      expect(metrics.find((metric) => metric.label === 'Best year (2025)')?.value).toBe('50')
+      expect(metrics.find((metric) => metric.label === 'Top 3 publications, last 12 months')?.value).toBe('94%')
+      expect(metrics.find((metric) => metric.label === 'Top cited publication')?.value).toBe('100')
+      expect(metrics.find((metric) => metric.label === 'Projected in 2026')?.value).toBe('65')
+      expect(labels).toEqual([
+        'Total citations',
+        'Projected in 2026',
+        'Last 1 year (rolling)',
+        'Year-to-date',
+        'Citations per publication',
+        'Top 3 publications, last 12 months',
+        'Top cited publication',
+        'Best year (2025)',
+      ])
+      expect(metrics.some((metric) => metric.label === 'Active years')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Mean yearly citations')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Median citations')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Uncited papers')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Newly cited papers (12m)')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Citation half-life proxy')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Last 3 years (rolling)')).toBe(false)
+      expect(metrics.some((metric) => metric.label === 'Last 5 years (rolling)')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('falls back to the chart-derived total when the numeric tile value is unavailable', () => {
@@ -801,6 +808,7 @@ describe('buildTrajectoryTooltipSlices', () => {
       years: [2023, 2024],
       rawValues: [5, 7],
       movingAvgValues: [4, 5.3],
+      movingAvgWindowMonths: [12, 12],
       cumulativeValues: [17, 24],
       activeValues: [5, 7],
       activePoints: [
@@ -856,7 +864,7 @@ describe('publication trajectory series helpers', () => {
       .toEqual([2016, 2017, 2018, 2019, 2020, 2021])
   })
 
-  it('uses last completed month counts for the current-year moving average point', () => {
+  it('annualizes each point over a trailing window, ending the current year at the last complete month', () => {
     const movingAverage = buildPublicationTrajectoryMovingAverageSeries({
       years: [2024, 2025, 2026],
       rawValues: [3, 3, 3],
@@ -874,9 +882,16 @@ describe('publication trajectory series helpers', () => {
       asOfDate: new Date(Date.UTC(2026, 2, 7)),
     })
 
-    expect(movingAverage).toEqual([3, 3, 2])
+    // Each point is an annualized pace over a trailing window that starts at the first
+    // observed month (2024-01) and ends at the year boundary, or the last complete month
+    // (2026-02) for the current year. The future 2026-09 record is excluded.
+    // 2024: 3 pubs / 12 months * 12 = 3; 2025: 6 / 24 * 12 = 3; 2026: 8 / 26 * 12 ≈ 3.69
+    expect(movingAverage.values[0]).toBeCloseTo(3, 6)
+    expect(movingAverage.values[1]).toBeCloseTo(3, 6)
+    expect(movingAverage.values[2]).toBeCloseTo((8 / 26) * 12, 6)
+    expect(movingAverage.windowMonths).toEqual([12, 24, 26])
     expect(formatTrajectoryMovingAveragePeriodLabel(2026, new Date(Date.UTC(2026, 2, 7)))).toBe('Feb 2026')
-    expect(formatTrajectoryMovingAveragePeriodLabel(2025, new Date(Date.UTC(2026, 2, 7)))).toBe('2025')
+    expect(formatTrajectoryMovingAveragePeriodLabel(2025, new Date(Date.UTC(2026, 2, 7)))).toBe('Dec 2025')
   })
 })
 
@@ -948,7 +963,14 @@ describe('buildCitationMomentumLists', () => {
 })
 
 describe('buildHIndexHeadlineMetricTiles', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('derives h-index runway stats from the publication list when backend summary fields are inconsistent', () => {
+    // Freeze the clock so the monthly trajectory's final point is deterministic.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(Date.UTC(2026, 2, 7)))
     const tile = buildHIndexTile({
       chart_data: {
         years: [2021, 2022, 2023, 2024, 2025],
