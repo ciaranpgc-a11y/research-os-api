@@ -1,5 +1,24 @@
 # Change Log
 
+## 2026-05-29
+
+### Impact Concentration Summary Upgrade + Influential-Citations Flicker Fix
+
+- **Area:** Publications metrics drilldowns (impact concentration, influential citations) on the Publications page.
+- **What changed:**
+  - Rebuilt the impact concentration drilldown **Summary** tab to match the h-index/citations quality bar: three bounded sections (Top-set concentration, Concentration curve, Concentration readout), each with a help tooltip, an insight overlay trigger, and an expand/collapse heading toggle.
+  - Added a **Lorenz concentration curve** (cumulative citation share vs. cumulative paper share) with the line of equality and a shaded Gini area — the canonical visual companion to the Gini coefficient already reported. The top-set count is now derived from data rather than hard-coded to 3.
+  - Fixed the **influential-citations trend chart flicker**: the line-draw animation reset on every metrics poll because the animation key embedded a refresh counter. The data values already encode the chart shape, so the counter (and its `refreshKey`/`chartRefreshCycle` plumbing) was removed.
+  - Updated stale frontend unit tests to the current implementation contracts and made the date-sensitive cases deterministic with `vi.setSystemTime`.
+- **Why it changed:**
+  - The impact concentration rail lagged the interaction quality of the other metric drilldowns and exposed only a single static donut.
+  - The flicker was a visible animation regression during the live metrics polling cycle.
+- **Key files touched:**
+  - `frontend/src/components/publications/PublicationsTopStrip.tsx`
+  - `frontend/src/components/publications/remaining-metric-drilldown.ts`
+  - `frontend/tests/publications-top-strip.test.tsx`
+  - `frontend/scripts/design-governance-baseline.json`
+
 ## 2026-03-23
 
 ### Profile Collections Dedicated Page + Batch Membership Read
