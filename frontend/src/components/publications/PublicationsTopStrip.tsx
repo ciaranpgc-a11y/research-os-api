@@ -25734,12 +25734,10 @@ function InfluentialTrendPanel({
   tile,
   chartTitle,
   chartTitleClassName,
-  refreshKey,
 }: {
   tile: PublicationMetricTilePayload
   chartTitle?: string
   chartTitleClassName?: string
-  refreshKey?: string | null
 }) {
   const pathRef = useRef<SVGPathElement>(null)
   const [pathLength, setPathLength] = useState(0)
@@ -31759,7 +31757,6 @@ function renderInfluentialCitationsDrilldownSection({
                   tile={tile}
                   chartTitle="Influential citations over time"
                   chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
-                  refreshKey="drilldown-influential"
                 />
               </div>
             </div>
@@ -31968,7 +31965,6 @@ export function PublicationsTopStrip({
   )
   const [publicationInsightsApiReady, setPublicationInsightsApiReady] = useState(false)
   const [toolboxOpen, setToolboxOpen] = useState(false)
-  const [chartRefreshCycle, setChartRefreshCycle] = useState(0)
 
   // Suppress toggle-thumb sliding transitions until entry animations complete
   const [tileToggleMotionReady, setTileToggleMotionReady] = useState(false)
@@ -31981,13 +31977,6 @@ export function PublicationsTopStrip({
     '--motion-duration-chart-refresh': `${CHART_MOTION.entry.duration}ms`,
     '--motion-duration-chart-toggle': `${CHART_MOTION.toggle.duration}ms`,
   }) as CSSProperties, [])
-
-  useEffect(() => {
-    if (!metrics || loading) {
-      return
-    }
-    setChartRefreshCycle((current) => current + 1)
-  }, [loading, metrics])
 
   const tiles = useMemo(() => {
     const source = metrics?.tiles ?? []
@@ -32733,7 +32722,6 @@ export function PublicationsTopStrip({
                       tile={tile}
                       chartTitle="Influential citations over time"
                       chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
-                      refreshKey={`${String(metrics?.data_last_refreshed || '')}|${chartRefreshCycle}`}
                     />
                   )
                 }
