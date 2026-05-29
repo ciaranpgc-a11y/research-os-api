@@ -25637,21 +25637,21 @@ function InfluentialTrendPanel({
   const [pathLength, setPathLength] = useState(0)
   
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
-  const sourceValues = primarySeries.length ? primarySeries : fallbackSeries
   const values = useMemo(() => {
-    if (!sourceValues.length) {
+    const primary = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+    const fallback = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
+    const source = primary.length ? primary : fallback
+    if (!source.length) {
       return []
     }
     const cumulative: number[] = []
     let running = 0
-    sourceValues.forEach((item) => {
+    source.forEach((item) => {
       running = Math.max(running, Math.max(0, item))
       cumulative.push(running)
     })
     return cumulative
-  }, [sourceValues])
+  }, [chartData.values, tile.sparkline])
   const labels = normalizeSeriesLabels(
     chartData.window_labels || chartData.labels || chartData.years,
     values.length,
@@ -25669,11 +25669,8 @@ function InfluentialTrendPanel({
     [points],
   )
   const lineAnimationKey = useMemo(
-    () => {
-      const seriesKey = hasValues ? values.map((value) => value.toFixed(3)).join('|') : 'empty'
-      return `${seriesKey}|${String(refreshKey || '')}`
-    },
-    [hasValues, refreshKey, values],
+    () => hasValues ? values.map((value) => value.toFixed(3)).join('|') : 'empty',
+    [hasValues, values],
   )
   const lineEntryKey = `${lineAnimationKey}|influential-line`
   const fallbackPathLength = useMemo(
@@ -25687,14 +25684,14 @@ function InfluentialTrendPanel({
   )
 
   useEffect(() => {
-    setPathLength(0)
     if (pathRef.current) {
       try {
-        const length = pathRef.current.getTotalLength()
-        setPathLength(length)
+        setPathLength(pathRef.current.getTotalLength())
       } catch {
         setPathLength(0)
       }
+    } else {
+      setPathLength(0)
     }
   }, [path])
 
