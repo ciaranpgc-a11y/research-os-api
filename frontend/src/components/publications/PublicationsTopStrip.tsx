@@ -31297,88 +31297,41 @@ function renderImpactConcentrationDrilldownSection({
   activeTab: DrilldownTab
   stats: ImpactConcentrationDrilldownStats
 }): ReactNode {
-  const topDriver = stats.topPapers[0] || null
-  const restSharePct = Math.max(0, 100 - stats.concentrationPct)
-  const driverMetricTiles = [
-    {
-      label: 'Top paper share',
-      value: topDriver ? formatPercentOne(topDriver.shareOfTotalPct) : '\u2014',
-      secondary: topDriver ? `${formatInt(topDriver.citations)} citations` : 'No driver paper',
-    },
-    {
-      label: `Top ${formatInt(stats.topPapersCount)} share`,
-      value: formatPercentWhole(stats.concentrationPct),
-      secondary: `${formatInt(stats.top3Citations)} citations`,
-    },
-    {
-      label: 'Long-tail share',
-      value: formatPercentWhole(restSharePct),
-      secondary: `${formatInt(stats.restCitations)} citations`,
-    },
-    {
-      label: 'Papers listed',
-      value: formatInt(stats.topPapers.length),
-      secondary: 'Rows shown',
-    },
-  ]
-
   if (activeTab === 'summary') {
     return <ImpactConcentrationSummary stats={stats} />
   }
 
   if (activeTab === 'breakdown') {
     return (
-      <>
-        <div
-          className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full"
-          data-ui="impact-concentration-driver-summary"
-        >
-          <div
-            className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
-            style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
-          >
-            {driverMetricTiles.map((metricTile) => (
-              <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
-                </div>
-                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
-              </div>
-            ))}
-          </div>
+      <div className="house-publications-drilldown-bounded-section" data-ui="impact-concentration-driver-papers">
+        <div className="house-drilldown-heading-block">
+          <p className="house-drilldown-heading-block-title">Top concentration drivers</p>
         </div>
-
-        <div className="house-publications-drilldown-bounded-section" data-ui="impact-concentration-driver-papers">
-          <div className="house-drilldown-heading-block">
-            <p className="house-drilldown-heading-block-title">Top concentration drivers</p>
-          </div>
-          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <CanonicalTablePanel
-              bare
-              variant="drilldown"
-              suppressTopRowHighlight
-              title="Driver papers"
-              columns={[
-                { key: 'paper', label: 'Paper', wrap: true },
-                { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
-                { key: 'share', label: 'Share', align: 'center', width: '1%' },
-                { key: 'year', label: 'Year', align: 'center', width: '1%' },
-              ]}
-              rows={stats.topPapers.map((publication) => ({
-                key: publication.workId,
-                cells: {
-                  paper: publication.title,
-                  citations: formatInt(publication.citations),
-                  share: formatPercentOne(publication.shareOfTotalPct),
-                  year: publication.year === null ? '\u2014' : formatInt(publication.year),
-                },
-              }))}
-              emptyMessage="No concentration driver papers available."
-            />
-          </div>
+        <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+          <CanonicalTablePanel
+            bare
+            variant="drilldown"
+            suppressTopRowHighlight
+            title="Driver papers"
+            columns={[
+              { key: 'paper', label: 'Paper', wrap: true },
+              { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
+              { key: 'share', label: 'Share', align: 'center', width: '1%' },
+              { key: 'year', label: 'Year', align: 'center', width: '1%' },
+            ]}
+            rows={stats.topPapers.map((publication) => ({
+              key: publication.workId,
+              cells: {
+                paper: publication.title,
+                citations: formatInt(publication.citations),
+                share: formatPercentOne(publication.shareOfTotalPct),
+                year: publication.year === null ? '\u2014' : formatInt(publication.year),
+              },
+            }))}
+            emptyMessage="No concentration driver papers available."
+          />
         </div>
-      </>
+      </div>
     )
   }
 
