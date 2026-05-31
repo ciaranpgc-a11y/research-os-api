@@ -189,22 +189,26 @@ describe('Influential citations drilldown', () => {
     expect(chart?.querySelector('.house-line-chart-surface')).toBeNull()
   })
 
-  it('toggles the summary trend between annual bars and cumulative line view', () => {
+  it('uses chart visual toggles for annual bars and cumulative line view', () => {
     renderInfluentialCitationsDrilldown()
 
     const dialog = screen.getByRole('dialog')
     const trendSection = dialog.querySelector('[data-ui="influential-citations-trend-section"]') as HTMLElement
     expect(trendSection).not.toBeNull()
 
-    expect(within(trendSection).getByRole('button', { name: 'Annual' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(trendSection).getByRole('button', { name: 'Cumulative' })).toHaveAttribute('aria-pressed', 'false')
+    const toggle = trendSection.querySelector('[data-ui="influential-citations-trend-visual-toggle"]')
+    expect(toggle).not.toBeNull()
+    expect(within(trendSection).getByRole('button', { name: 'Annual bars' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(trendSection).getByRole('button', { name: 'Cumulative line' })).toHaveAttribute('aria-pressed', 'false')
     expect(trendSection.querySelectorAll('[data-ui="influential-citations-trend-bar"]').length).toBeGreaterThan(0)
 
-    fireEvent.click(within(trendSection).getByRole('button', { name: 'Cumulative' }))
+    fireEvent.click(within(trendSection).getByRole('button', { name: 'Cumulative line' }))
 
-    expect(within(trendSection).getByRole('button', { name: 'Annual' })).toHaveAttribute('aria-pressed', 'false')
-    expect(within(trendSection).getByRole('button', { name: 'Cumulative' })).toHaveAttribute('aria-pressed', 'true')
-    expect(trendSection.querySelector('[data-ui="influential-citations-cumulative-line"]')).not.toBeNull()
+    expect(within(trendSection).getByRole('button', { name: 'Annual bars' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(trendSection).getByRole('button', { name: 'Cumulative line' })).toHaveAttribute('aria-pressed', 'true')
+    const cumulativeLine = trendSection.querySelector('[data-ui="influential-citations-cumulative-line"]')
+    expect(cumulativeLine).not.toBeNull()
+    expect(cumulativeLine).not.toHaveClass('house-toggle-chart-line')
     expect(trendSection.querySelector('[data-ui="influential-citations-trend-bar"]')).toBeNull()
     expect(within(trendSection).getByText('Cumulative influential citations')).toBeInTheDocument()
     expect(within(trendSection).getByText('Total:')).toBeInTheDocument()

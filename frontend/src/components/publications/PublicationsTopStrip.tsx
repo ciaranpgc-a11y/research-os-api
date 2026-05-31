@@ -25895,41 +25895,38 @@ type InfluentialTrendPanelProps = {
   showMeanLine?: boolean
 }
 
-function InfluentialTrendModeToggle({
+function InfluentialTrendVisualToggle({
   value,
   onChange,
 }: {
   value: InfluentialTrendMode
   onChange: (mode: InfluentialTrendMode) => void
 }) {
-  const activeIndex = value === 'cumulative' ? 1 : 0
-
   return (
     <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
       <div
-        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'overflow-hidden')}
         data-stop-tile-open="true"
-        data-ui="influential-citations-trend-mode-toggle"
+        data-ui="influential-citations-trend-visual-toggle"
         data-house-role="chart-toggle"
-        style={{ width: '12.25rem', minWidth: '12.25rem', maxWidth: '12.25rem' }}
+        style={{ width: '5.35rem', gridTemplateColumns: '1fr 1fr' }}
       >
-        <span
-          className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
-          aria-hidden="true"
-        />
         {([
-          { value: 'annual', label: 'Annual' },
-          { value: 'cumulative', label: 'Cumulative' },
+          { value: 'annual', label: 'Annual bars' },
+          { value: 'cumulative', label: 'Cumulative line' },
         ] as const).map((option) => (
           <button
             key={option.value}
             type="button"
             data-stop-tile-open="true"
+            aria-label={option.label}
             className={cn(
               HOUSE_TOGGLE_BUTTON_CLASS,
-              'inline-flex items-center justify-center',
-              value === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+              'relative z-[1] inline-flex min-w-0 items-center justify-center px-1.5',
+              option.value === 'annual' ? '!rounded-l-full !rounded-r-none' : '!rounded-l-none !rounded-r-full',
+              value === option.value
+                ? 'bg-foreground text-background shadow-sm'
+                : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
             )}
             onClick={(event) => {
               event.stopPropagation()
@@ -25941,7 +25938,30 @@ function InfluentialTrendModeToggle({
             onMouseDown={(event) => event.stopPropagation()}
             aria-pressed={value === option.value}
           >
-            {option.label}
+            {option.value === 'annual' ? (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
+                <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+                <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+                <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+                <polyline
+                  points="2,11 6,8 9,9 14,4"
+                  fill="none"
+                  className="house-toggle-chart-line"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  data-expanded="true"
+                />
+                <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+                <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+                <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+                <circle cx="14" cy="4" r="1.1" fill="currentColor" />
+              </svg>
+            )}
           </button>
         ))}
       </div>
@@ -25958,8 +25978,6 @@ function InfluentialTrendBarPanel({
   showMeanLine = false,
 }: InfluentialTrendPanelProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const linePathRef = useRef<SVGPathElement>(null)
-  const [linePathLength, setLinePathLength] = useState(0)
   const bars = useMemo(() => buildInfluentialTrendBars(tile, trendMode), [tile, trendMode])
   const hasBars = bars.length > 0
   const values = bars.map((bar) => Math.max(0, bar.value))
@@ -26049,27 +26067,9 @@ function InfluentialTrendBarPanel({
   const lineAreaPath = linePath && linePoints.length
     ? `${linePath} L ${linePoints[linePoints.length - 1].x},100 L ${linePoints[0].x},100 Z`
     : ''
-  const lineFallbackLength = useMemo(
-    () => Math.max(1, estimateInfluentialPolylineLength(linePoints)),
-    [linePoints],
-  )
-  const effectiveLinePathLength = linePathLength > 0 ? linePathLength : lineFallbackLength
-
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
-
-  useEffect(() => {
-    if (linePathRef.current) {
-      try {
-        setLinePathLength(linePathRef.current.getTotalLength())
-      } catch {
-        setLinePathLength(0)
-      }
-    } else {
-      setLinePathLength(0)
-    }
-  }, [linePath])
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No influential citation trend</div>
@@ -26148,7 +26148,6 @@ function InfluentialTrendBarPanel({
                   />
                 ) : null}
                 <path
-                  ref={linePathRef}
                   d={linePath}
                   fill="none"
                   stroke="hsl(var(--tone-accent-500))"
@@ -26157,11 +26156,14 @@ function InfluentialTrendBarPanel({
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                   shapeRendering="geometricPrecision"
-                  className="house-toggle-chart-line"
-                  data-expanded={lineExpanded ? 'true' : 'false'}
+                  className={HOUSE_TOGGLE_CHART_MORPH_CLASS}
                   data-ui="influential-citations-cumulative-line"
                   style={{
-                    '--chart-path-length': effectiveLinePathLength,
+                    opacity: lineExpanded ? 1 : 0,
+                    transform: `scaleX(${lineExpanded ? 1 : 0})`,
+                    transformBox: 'fill-box',
+                    transformOrigin: 'left center',
+                    transitionProperty: 'opacity,transform,stroke',
                     transitionDuration: lineTransitionDuration,
                   } as CSSProperties}
                 />
@@ -32071,9 +32073,9 @@ function renderInfluentialCitationsDrilldownSection({
             <p className="house-drilldown-heading-block-title">Influential citations over time</p>
           </div>
           <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-start')}>
-              <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-                <InfluentialTrendModeToggle value={trendMode} onChange={onTrendModeChange} />
+            <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-end')}>
+              <div className="flex items-center">
+                <InfluentialTrendVisualToggle value={trendMode} onChange={onTrendModeChange} />
               </div>
             </div>
             <div className="house-drilldown-content-block w-full house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall">
