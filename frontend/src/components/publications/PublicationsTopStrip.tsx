@@ -11601,26 +11601,95 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
   const rest = values[1] || 0
-  const total = top3 + rest
+  const total = Math.max(0, top3 + rest)
+  const ringRadius = 38
+  const ringCircumference = 2 * Math.PI * ringRadius
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
-  const restPct = Math.max(0, 100 - top3Pct)
+  const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
+  const top3AnimatedDash = (top3PctRounded / 100) * ringCircumference
+  const explicitTotalPublicationsCandidates = [
+    Number(chartData.total_publications),
+    Number(chartData.total_publications_count),
+    Number(chartData.total_papers),
+    Number(chartData.paper_count),
+  ]
+  const explicitTotalPublications = explicitTotalPublicationsCandidates.find(
+    (item) => Number.isFinite(item) && item >= 0,
+  )
+  const uncitedCountRaw = Number(chartData.uncited_publications_count)
+  const uncitedPctRaw = Number(chartData.uncited_publications_pct)
+  const inferredTotalPublications = Number.isFinite(uncitedCountRaw) && Number.isFinite(uncitedPctRaw) && uncitedPctRaw > 0
+    ? Math.max(0, Math.round(uncitedCountRaw / (uncitedPctRaw / 100)))
+    : null
+  const totalPublications = explicitTotalPublications !== undefined
+    ? Math.max(0, Math.round(explicitTotalPublications))
+    : inferredTotalPublications
+  const topPapersCountRaw = Number(chartData.top_papers_count ?? chartData.top_paper_count ?? 3)
+  const topPapersCount = Math.max(0, Math.round(Number.isFinite(topPapersCountRaw) ? topPapersCountRaw : 3))
+  const effectiveTopPapersCount = totalPublications === null
+    ? topPapersCount
+    : Math.max(0, Math.min(topPapersCount, totalPublications))
+  const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
+  const ringAnimationKey = useMemo(
+    () => `${top3PctRounded}|${totalPublications ?? 'na'}|${effectiveTopPapersCount}`,
+    [effectiveTopPapersCount, top3PctRounded, totalPublications],
+  )
+  const isImpactConcentrationEntryCycle = useIsFirstChartEntry(ringAnimationKey, total > 0)
+  const ringVisible = useUnifiedToggleBarAnimation(ringAnimationKey, total > 0)
+  const ringVisibleDash = ringVisible ? top3AnimatedDash : 0
+  const ringTransitionDuration = ringChartDurationVar(isImpactConcentrationEntryCycle)
 
   return (
-    <CitationSplitBarCard
-      bare
-      left={{
-        label: 'Top cited set',
-        value: formatPercentWhole(top3Pct),
-        ratioPct: top3Pct,
-        toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
-      }}
-      right={{
-        label: 'Long tail',
-        value: formatPercentWhole(restPct),
-        ratioPct: restPct,
-        toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
-      }}
-    />
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex-1 min-h-0 flex flex-col py-1.5">
+        <div className="flex-1" />
+        <div
+          className={cn(
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_RING_ENTERED_CLASS,
+          )}
+        >
+          {total > 0 ? (
+            <div className={HOUSE_CHART_RING_PANEL_CLASS}>
+              <svg
+                viewBox="0 0 100 100"
+                className={HOUSE_CHART_RING_SIZE_CLASS}
+                data-stop-tile-open="true"
+              >
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={ringRadius}
+                  fill="none"
+                  className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
+                  strokeWidth={ringStrokeWidth}
+                  strokeLinecap="round"
+                  transform="rotate(-90 50 50)"
+                />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r={ringRadius}
+                  fill="none"
+                  className={cn(HOUSE_CHART_RING_MAIN_SVG_CLASS, 'house-chart-ring-dasharray-motion')}
+                  strokeWidth={ringStrokeWidth}
+                  strokeLinecap="round"
+                  transform="rotate(-90 50 50)"
+                  style={{
+                    strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
+                    strokeDashoffset: 0,
+                    '--chart-transition-duration': ringTransitionDuration,
+                  } as React.CSSProperties}
+                />
+              </svg>
+            </div>
+          ) : (
+            <div className={dashboardTileStyles.emptyChart}>No concentration data</div>
+          )}
+        </div>
+        <div className="flex-1" />
+      </div>
+    </div>
   )
 }
 
@@ -31245,29 +31314,6 @@ function ImpactConcentrationSummary({
   const topPapersLabel = stats.topPapersCount === 1 ? 'paper' : 'papers'
   const giniText = stats.giniCoefficient === null ? '\u2014' : stats.giniCoefficient.toFixed(2)
   const restSharePct = Math.max(0, 100 - stats.concentrationPct)
-  const leadingDriverRows = stats.topPapers.slice(0, Math.max(3, stats.topPapersCount))
-  const summaryMetricTiles = [
-    {
-      label: `Top ${formatInt(stats.topPapersCount)} share`,
-      value: formatPercentWhole(stats.concentrationPct),
-      secondary: `${formatInt(stats.top3Citations)} citations`,
-    },
-    {
-      label: 'Long-tail share',
-      value: formatPercentWhole(restSharePct),
-      secondary: `${formatInt(stats.restCitations)} citations`,
-    },
-    {
-      label: 'Gini coefficient',
-      value: giniText,
-      secondary: stats.classification,
-    },
-    {
-      label: 'Uncited papers',
-      value: formatPercentWhole(stats.uncitedPublicationsPct),
-      secondary: `${formatInt(stats.uncitedPublicationsCount)} of ${formatInt(stats.totalPublications)}`,
-    },
-  ]
 
   return (
     <div className="house-publications-drilldown-bounded-section">
@@ -31276,28 +31322,9 @@ function ImpactConcentrationSummary({
       </div>
       <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
         <div className="space-y-3">
-          <DrilldownNarrativeCard
-            title={`The top ${formatInt(stats.topPapersCount)} ${topPapersLabel} carry ${formatPercentWhole(stats.concentrationPct)} of lifetime citations.`}
-            body="This is the portfolio-shape view: it separates citation impact carried by the leading papers from the wider publication tail."
-          />
-          <div
-            className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
-            style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
-          >
-            {summaryMetricTiles.map((metricTile) => (
-              <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
-                </div>
-                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
-              </div>
-            ))}
-          </div>
           <CitationSplitBarCard
             bare
             title={`Top ${formatInt(stats.topPapersCount)} vs long tail`}
-            subtitle="Citation share carried by the leading papers compared with the rest of the portfolio."
             left={{
               label: `Top ${formatInt(stats.topPapersCount)} ${topPapersLabel}`,
               value: `${formatPercentWhole(stats.concentrationPct)} (${formatInt(stats.top3Citations)})`,
@@ -31314,24 +31341,41 @@ function ImpactConcentrationSummary({
           <CanonicalTablePanel
             bare
             variant="drilldown"
-            title="Top concentration drivers"
-            subtitle="Highest-cited papers contributing to the current concentration profile."
+            title="Concentration readout"
             columns={[
-              { key: 'paper', label: 'Paper', wrap: true },
-              { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
-              { key: 'share', label: 'Share', align: 'center', width: '1%' },
-              { key: 'year', label: 'Year', align: 'center', width: '1%' },
+              { key: 'measure', label: 'Measure' },
+              { key: 'value', label: 'Value', align: 'center', width: '1%' },
             ]}
-            rows={leadingDriverRows.map((publication) => ({
-              key: publication.workId,
-              cells: {
-                paper: publication.title,
-                citations: formatInt(publication.citations),
-                share: formatPercentOne(publication.shareOfTotalPct),
-                year: publication.year === null ? '\u2014' : formatInt(publication.year),
+            rows={[
+              {
+                key: 'top-share',
+                cells: {
+                  measure: `Top ${formatInt(stats.topPapersCount)} ${topPapersLabel}`,
+                  value: `${formatPercentWhole(stats.concentrationPct)} (${formatInt(stats.top3Citations)})`,
+                },
               },
-            }))}
-            emptyMessage="No concentration driver papers available."
+              {
+                key: 'long-tail',
+                cells: {
+                  measure: `${formatInt(stats.remainingPapersCount)} remaining ${pluralize(stats.remainingPapersCount, 'publication')}`,
+                  value: `${formatPercentWhole(restSharePct)} (${formatInt(stats.restCitations)})`,
+                },
+              },
+              {
+                key: 'gini',
+                cells: {
+                  measure: 'Gini coefficient',
+                  value: giniText,
+                },
+              },
+              {
+                key: 'uncited',
+                cells: {
+                  measure: 'Uncited papers',
+                  value: `${formatInt(stats.uncitedPublicationsCount)} / ${formatInt(stats.totalPublications)}`,
+                },
+              },
+            ]}
           />
         </div>
       </div>

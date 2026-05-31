@@ -129,14 +129,30 @@ describe('Impact concentration drilldown', () => {
     expect(screen.queryByRole('tab', { name: 'Context' })).not.toBeInTheDocument()
   })
 
-  it('keeps the summary focused on the citation split and leading drivers', () => {
+  it('keeps the dashboard tile as the existing donut visual', () => {
+    const result = render(
+      <PublicationsTopStrip
+        metrics={buildMetricsPayload(buildImpactConcentrationTile())}
+        token="test-token"
+      />,
+    )
+
+    const metricTile = result.container.querySelector('[data-metric-key="impact_concentration"]')
+    expect(metricTile).not.toBeNull()
+    expect(metricTile?.querySelector('svg[data-stop-tile-open="true"]')).not.toBeNull()
+    expect(within(metricTile as HTMLElement).queryByText('Top cited set')).not.toBeInTheDocument()
+  })
+
+  it('keeps the summary concise and leaves paper rows to the drivers tab', () => {
     renderImpactConcentrationDrilldown()
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Impact concentration overview')).toBeInTheDocument()
     expect(within(dialog).getByText('Top 3 vs long tail')).toBeInTheDocument()
-    expect(within(dialog).getByText('Top concentration drivers')).toBeInTheDocument()
-    expect(within(dialog).getByText('Leading citation paper')).toBeInTheDocument()
+    expect(within(dialog).getByText('Concentration readout')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Top concentration drivers')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Leading citation paper')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/portfolio-shape view/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Approved story')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Concentration curve')).not.toBeInTheDocument()
   })
