@@ -183,4 +183,23 @@ describe('Impact concentration drilldown', () => {
     expect(within(dialog).queryByText(/portfolio concentration is driven/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/table identifies the papers/i)).not.toBeInTheDocument()
   })
+
+  it('keeps the distribution tab compact and evidence-led', () => {
+    renderImpactConcentrationDrilldown()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Distribution' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.querySelector('[data-ui="impact-concentration-distribution"]')).not.toBeNull()
+    expect(dialog.querySelector('[data-ui="impact-concentration-ranked-bars"]')).not.toBeNull()
+    expect(dialog.querySelector('[data-ui="impact-concentration-bands"]')).not.toBeNull()
+    expect(within(dialog).getByText('Citation distribution')).toBeInTheDocument()
+    expect(within(dialog).getByText('Ranked citation share')).toBeInTheDocument()
+    expect(within(dialog).getByText('Citation bands')).toBeInTheDocument()
+    expect(within(dialog).getByText('Leading citation paper')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Citation distribution curve')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Cumulative citation share')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/Gini of/i)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/Curve against the equality line/i)).not.toBeInTheDocument()
+  })
 })

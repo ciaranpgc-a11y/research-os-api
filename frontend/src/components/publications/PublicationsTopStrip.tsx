@@ -11693,110 +11693,120 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   )
 }
 
-function ImpactConcentrationLorenzPanel({
-  points,
+function ImpactConcentrationRankedBarsPanel({
+  stats,
 }: {
-  points: Array<{ paperFraction: number; citationFraction: number }>
+  stats: ImpactConcentrationDrilldownStats
 }) {
-  const pathRef = useRef<SVGPathElement>(null)
-  const [pathLength, setPathLength] = useState(0)
-  const hasCurve = points.length >= 2
-  const curvePoints = useMemo(
-    () => points.map((point) => ({
-      x: Math.max(0, Math.min(100, point.paperFraction * 100)),
-      y: Math.max(0, Math.min(100, 100 - point.citationFraction * 100)),
-    })),
-    [points],
-  )
-  const linePath = useMemo(
-    () => (curvePoints.length ? monotonePathFromPoints(curvePoints) : ''),
-    [curvePoints],
-  )
-  const areaPath = useMemo(() => {
-    if (!curvePoints.length) {
-      return ''
-    }
-    const curveSegments = curvePoints
-      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-      .join(' ')
-    // Close the shape back along the line of equality (100,0) -> (0,100) to shade the Gini area.
-    return `${curveSegments} L 0 100 Z`
-  }, [curvePoints])
-  const animationKey = useMemo(
-    () => (hasCurve ? curvePoints.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join('|') : 'empty'),
-    [curvePoints, hasCurve],
-  )
-  const lineEntryKey = `${animationKey}|impact-lorenz`
-  const fallbackPathLength = useMemo(
-    () => Math.max(1, estimatePolylineLength(curvePoints)),
-    [curvePoints],
-  )
-  const effectivePathLength = pathLength > 0 ? pathLength : fallbackPathLength
-  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasCurve)
-  const lineTransitionDuration = tileChartDurationVar(
-    useIsFirstChartEntry(lineEntryKey, hasCurve),
-  )
-
-  useEffect(() => {
-    if (pathRef.current) {
-      try {
-        setPathLength(pathRef.current.getTotalLength())
-      } catch {
-        setPathLength(0)
-      }
-    } else {
-      setPathLength(0)
-    }
-  }, [linePath])
-
-  if (!hasCurve) {
-    return <div className={dashboardTileStyles.emptyChart}>No concentration curve data</div>
-  }
+  const rankedPapers = stats.topPapers.slice(0, 6)
+  const maxCitations = Math.max(1, ...rankedPapers.map((publication) => publication.citations))
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <div
-        className={cn(
-          HOUSE_LINE_CHART_SURFACE_CLASS,
-          HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
+    <div
+      className={cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'space-y-3 px-3 py-3')}
+      data-ui="impact-concentration-ranked-bars"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Ranked citation share</p>
+        {stats.giniCoefficient === null ? null : (
+          <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS)}>
+            Gini {stats.giniCoefficient.toFixed(2)}
+          </span>
         )}
-      >
-        <div className="relative h-full w-full">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
-            {/* Gini area between the Lorenz curve and the line of equality */}
-            <path d={areaPath} fill="hsl(var(--tone-accent-400))" fillOpacity={0.12} stroke="none" />
-            {/* Line of perfect equality */}
-            <line
-              x1="0"
-              y1="100"
-              x2="100"
-              y2="0"
-              stroke="hsl(var(--tone-neutral-400))"
-              strokeWidth="1.5"
-              strokeDasharray="4 4"
-              strokeLinecap="round"
-            />
-            {/* Lorenz curve */}
-            <path
-              ref={pathRef}
-              d={linePath}
-              fill="none"
-              stroke="hsl(var(--tone-accent-400))"
-              strokeWidth="3.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              shapeRendering="geometricPrecision"
-              className="house-toggle-chart-line"
-              data-expanded={lineExpanded ? 'true' : 'false'}
-              style={{
-                '--chart-path-length': effectivePathLength,
-                transitionDuration: lineTransitionDuration,
-              } as React.CSSProperties}
-            />
-          </svg>
-        </div>
       </div>
+      {rankedPapers.length > 0 ? (
+        <div className="space-y-2.5">
+          {rankedPapers.map((publication, index) => {
+            const widthPct = Math.max(3, Math.min(100, (publication.citations / maxCitations) * 100))
+            return (
+              <div
+                key={publication.workId}
+                className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-3"
+              >
+                <p className="text-right text-[0.72rem] font-semibold tabular-nums text-[hsl(var(--tone-neutral-500))]">
+                  #{index + 1}
+                </p>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex min-w-0 items-baseline justify-between gap-3">
+                    <p className="min-w-0 truncate text-sm font-medium leading-5 text-[hsl(var(--tone-neutral-800))]">
+                      {publication.title}
+                    </p>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums text-[hsl(var(--tone-neutral-900))]">
+                      {formatInt(publication.citations)} ({formatPercentOne(publication.shareOfTotalPct)})
+                    </p>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+                    <div
+                      className="h-full rounded-full bg-[hsl(var(--tone-accent-400))]"
+                      style={{ width: `${widthPct.toFixed(2)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-sm leading-6 text-[hsl(var(--tone-neutral-600))]">No ranked citation data available.</p>
+      )}
+    </div>
+  )
+}
+
+function ImpactConcentrationBandsPanel({
+  stats,
+}: {
+  stats: ImpactConcentrationDrilldownStats
+}) {
+  const remainingSharePct = Math.max(0, 100 - stats.concentrationPct)
+  const topPapersLabel = stats.topPapersCount === 1 ? 'paper' : 'papers'
+
+  return (
+    <div
+      className={cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'px-3 py-3')}
+      data-ui="impact-concentration-bands"
+    >
+      <CanonicalTablePanel
+        bare
+        variant="drilldown"
+        suppressTopRowHighlight
+        title="Citation bands"
+        columns={[
+          { key: 'segment', label: 'Segment', wrap: true },
+          { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
+          { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
+          { key: 'share', label: 'Citation share', align: 'center', width: '1%' },
+        ]}
+        rows={[
+          {
+            key: 'top',
+            cells: {
+              segment: `Top ${formatInt(stats.topPapersCount)} ${topPapersLabel}`,
+              papers: formatInt(stats.topPapersCount),
+              citations: formatInt(stats.top3Citations),
+              share: formatPercentWhole(stats.concentrationPct),
+            },
+          },
+          {
+            key: 'remaining',
+            cells: {
+              segment: 'Remaining publications',
+              papers: formatInt(stats.remainingPapersCount),
+              citations: formatInt(stats.restCitations),
+              share: formatPercentWhole(remainingSharePct),
+            },
+          },
+          {
+            key: 'uncited',
+            cells: {
+              segment: 'Uncited publications',
+              papers: `${formatInt(stats.uncitedPublicationsCount)} (${formatPercentWhole(stats.uncitedPublicationsPct)})`,
+              citations: '0',
+              share: '0%',
+            },
+          },
+        ]}
+      />
     </div>
   )
 }
@@ -31337,29 +31347,14 @@ function renderImpactConcentrationDrilldownSection({
 
   if (activeTab === 'trajectory') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
+      <div className="house-publications-drilldown-bounded-section" data-ui="impact-concentration-distribution">
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Citation distribution curve</p>
+          <p className="house-drilldown-heading-block-title">Citation distribution</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
-            <DrilldownNarrativeCard
-              title={stats.giniCoefficient === null
-                ? 'The distribution view traces how citations accumulate across the portfolio.'
-                : `A Gini of ${stats.giniCoefficient.toFixed(2)} indicates a ${stats.giniCoefficient >= 0.6 ? 'highly concentrated' : stats.giniCoefficient >= 0.4 ? 'moderately concentrated' : 'more evenly distributed'} citation profile.`}
-              body="The curve shows the full citation distribution rather than a single cut-off, so standout papers and the long tail can be read together."
-            />
-            <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-              <div className="space-y-1">
-                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Cumulative citation share</p>
-                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">
-                  Curve against the equality line, with the shaded gap representing citation dispersion.
-                </p>
-              </div>
-              <div className="min-h-[11rem]">
-                <ImpactConcentrationLorenzPanel points={stats.lorenzPoints} />
-              </div>
-            </div>
+            <ImpactConcentrationRankedBarsPanel stats={stats} />
+            <ImpactConcentrationBandsPanel stats={stats} />
           </div>
         </div>
       </div>
