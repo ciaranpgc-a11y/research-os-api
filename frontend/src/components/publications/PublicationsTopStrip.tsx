@@ -31824,12 +31824,12 @@ function renderInfluentialCitationsDrilldownSection({
     ]
 
     return (
-      <div className="house-publications-drilldown-bounded-section" data-ui="influential-citations-summary">
-        <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Influential citation overview</p>
-        </div>
-        <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
+      <>
+        <div className="house-publications-drilldown-bounded-section" data-ui="influential-citations-summary">
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Influential citation overview</p>
+          </div>
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
             <div
               className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
               style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
@@ -31844,24 +31844,26 @@ function renderInfluentialCitationsDrilldownSection({
                 </div>
               ))}
             </div>
-            <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-              <div className="space-y-1">
-                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Influential citations over time</p>
-                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">Provider-supplied trend view for influential citation activity.</p>
-              </div>
-              <div className="min-h-[11rem]">
-                <InfluentialTrendPanel
-                  tile={tile}
-                  chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
-                  variant="bars"
-                  showAxes
-                  showMeanLine
-                />
-              </div>
+          </div>
+        </div>
+
+        <div className="house-publications-drilldown-bounded-section" data-ui="influential-citations-trend-section">
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Influential citations over time</p>
+          </div>
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <div className="house-drilldown-content-block w-full house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall">
+              <InfluentialTrendPanel
+                tile={tile}
+                chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
+                variant="bars"
+                showAxes
+                showMeanLine
+              />
             </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 

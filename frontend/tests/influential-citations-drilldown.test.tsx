@@ -156,17 +156,21 @@ describe('Influential citations drilldown', () => {
     expect(screen.queryByRole('tab', { name: 'Context' })).not.toBeInTheDocument()
   })
 
-  it('keeps summary compact with headline tiles and trend only', () => {
+  it('keeps summary tiles and trend chart in separate sections', () => {
     renderInfluentialCitationsDrilldown()
 
     const dialog = screen.getByRole('dialog')
-    expect(dialog.querySelector('[data-ui="influential-citations-summary"]')).not.toBeNull()
+    const summary = dialog.querySelector('[data-ui="influential-citations-summary"]')
+    const trendSection = dialog.querySelector('[data-ui="influential-citations-trend-section"]')
+    expect(summary).not.toBeNull()
+    expect(trendSection).not.toBeNull()
+    expect(summary?.querySelector('[data-ui="influential-citations-trend-chart"]')).toBeNull()
     expect(within(dialog).getByText('Influential citation overview')).toBeInTheDocument()
     expect(within(dialog).getByText('Total influential')).toBeInTheDocument()
     expect(within(dialog).getByText('Influential ratio')).toBeInTheDocument()
     expect(within(dialog).getByText('Last 12 months')).toBeInTheDocument()
     expect(within(dialog).getByText('12m change')).toBeInTheDocument()
-    expect(within(dialog).getByText('Influential citations over time')).toBeInTheDocument()
+    expect(within(trendSection as HTMLElement).getByText('Influential citations over time')).toBeInTheDocument()
     expect(within(dialog).queryByText('Approved story')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Influential citation readout')).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/quality-of-impact rather than raw volume/i)).not.toBeInTheDocument()
