@@ -25856,19 +25856,22 @@ function buildInfluentialTrendBars(tile: PublicationMetricTilePayload): Influent
   })
 }
 
-function InfluentialTrendPanel({
+type InfluentialTrendPanelProps = {
+  tile: PublicationMetricTilePayload
+  chartTitle?: string
+  chartTitleClassName?: string
+  variant?: 'line' | 'bars'
+  showAxes?: boolean
+  showMeanLine?: boolean
+}
+
+function InfluentialTrendBarPanel({
   tile,
   chartTitle,
   chartTitleClassName,
   showAxes = false,
   showMeanLine = false,
-}: {
-  tile: PublicationMetricTilePayload
-  chartTitle?: string
-  chartTitleClassName?: string
-  showAxes?: boolean
-  showMeanLine?: boolean
-}) {
+}: InfluentialTrendPanelProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const bars = useMemo(() => buildInfluentialTrendBars(tile), [tile])
   const hasBars = bars.length > 0
@@ -26113,6 +26116,163 @@ function InfluentialTrendPanel({
       </div>
     </div>
   )
+}
+
+function buildInfluentialLinePoints(
+  values: number[],
+  width: number,
+  height: number,
+  labels: string[],
+  padding = 6,
+): LinePoint[] {
+  if (!values.length) {
+    return []
+  }
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = Math.max(1e-6, max - min)
+  const step = values.length > 1 ? (width - padding * 2) / (values.length - 1) : 0
+  return values.map((value, index) => ({
+    x: padding + index * step,
+    y: height - padding - ((value - min) / range) * (height - padding * 2),
+    value,
+    label: labels[index] || `${index + 1}`,
+  }))
+}
+
+function estimateInfluentialPolylineLength(points: Array<{ x: number; y: number }>): number {
+  if (points.length < 2) {
+    return 0
+  }
+  let total = 0
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1]
+    const current = points[index]
+    const dx = current.x - previous.x
+    const dy = current.y - previous.y
+    total += Math.hypot(dx, dy)
+  }
+  return total
+}
+
+function InfluentialTrendLinePanel({
+  tile,
+  chartTitle,
+  chartTitleClassName,
+}: InfluentialTrendPanelProps) {
+  const pathRef = useRef<SVGPathElement>(null)
+  const [pathLength, setPathLength] = useState(0)
+
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const values = useMemo(() => {
+    const primary = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+    const fallback = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
+    const source = primary.length ? primary : fallback
+    if (!source.length) {
+      return []
+    }
+    const cumulative: number[] = []
+    let running = 0
+    source.forEach((item) => {
+      running = Math.max(running, Math.max(0, item))
+      cumulative.push(running)
+    })
+    return cumulative
+  }, [chartData.values, tile.sparkline])
+  const labels = normalizeSeriesLabels(
+    chartData.window_labels || chartData.labels || chartData.years,
+    values.length,
+    'W',
+  )
+  const hasValues = values.length > 0
+  const width = 220
+  const height = 92
+  const points = useMemo(
+    () => (hasValues ? buildInfluentialLinePoints(values, width, height, labels, 8) : []),
+    [hasValues, labels, values],
+  )
+  const path = useMemo(
+    () => (points.length ? monotonePathFromPoints(points) : ''),
+    [points],
+  )
+  const lineAnimationKey = useMemo(
+    () => hasValues ? values.map((value) => value.toFixed(3)).join('|') : 'empty',
+    [hasValues, values],
+  )
+  const lineEntryKey = `${lineAnimationKey}|influential-line`
+  const fallbackPathLength = useMemo(
+    () => Math.max(1, estimateInfluentialPolylineLength(points)),
+    [points],
+  )
+  const effectivePathLength = pathLength > 0 ? pathLength : fallbackPathLength
+  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasValues)
+  const lineTransitionDuration = tileChartDurationVar(
+    useIsFirstChartEntry(lineEntryKey, hasValues),
+  )
+
+  useEffect(() => {
+    if (pathRef.current) {
+      try {
+        setPathLength(pathRef.current.getTotalLength())
+      } catch {
+        setPathLength(0)
+      }
+    } else {
+      setPathLength(0)
+    }
+  }, [path])
+
+  if (!hasValues) {
+    return <div className={dashboardTileStyles.emptyChart}>No influential citation trend</div>
+  }
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      {chartTitle ? (
+        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+          {chartTitle}
+        </p>
+      ) : null}
+      <div
+        className={cn(
+          HOUSE_SURFACE_STRONG_PANEL_CLASS,
+          'relative flex-1 px-1.5 pb-1.5 pt-2',
+          HOUSE_CHART_TRANSITION_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
+        )}
+      >
+        <div className="relative h-full w-full">
+          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
+            <path
+              ref={pathRef}
+              d={path}
+              fill="none"
+              stroke="hsl(var(--tone-accent-400))"
+              strokeWidth="3.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              shapeRendering="geometricPrecision"
+              className="house-toggle-chart-line"
+              data-expanded={lineExpanded ? 'true' : 'false'}
+              style={{
+                '--chart-path-length': effectivePathLength,
+                transitionDuration: lineTransitionDuration,
+              } as CSSProperties}
+            />
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function InfluentialTrendPanel({
+  variant = 'line',
+  ...props
+}: InfluentialTrendPanelProps) {
+  return variant === 'bars'
+    ? <InfluentialTrendBarPanel {...props} />
+    : <InfluentialTrendLinePanel {...props} />
 }
 
 function MiniBars({
@@ -31693,6 +31853,7 @@ function renderInfluentialCitationsDrilldownSection({
                 <InfluentialTrendPanel
                   tile={tile}
                   chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
+                  variant="bars"
                   showAxes
                   showMeanLine
                 />

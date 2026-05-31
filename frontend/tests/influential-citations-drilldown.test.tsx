@@ -109,7 +109,7 @@ function buildMetricsPayload(tile: PublicationMetricTilePayload): PublicationsTo
   }
 }
 
-function renderInfluentialCitationsDrilldown() {
+function renderInfluentialCitationsTile() {
   const result = render(
     <PublicationsTopStrip
       metrics={buildMetricsPayload(buildInfluentialCitationsTile())}
@@ -118,6 +118,11 @@ function renderInfluentialCitationsDrilldown() {
   )
   const metricTile = result.container.querySelector('[data-metric-key="influential_citations"]')
   expect(metricTile).not.toBeNull()
+  return { result, metricTile: metricTile as HTMLElement }
+}
+
+function renderInfluentialCitationsDrilldown() {
+  const { result, metricTile } = renderInfluentialCitationsTile()
   fireEvent.click(metricTile as HTMLElement)
   return result
 }
@@ -127,6 +132,15 @@ describe('Influential citations drilldown', () => {
     mockFetchPublicationInsightsAgent.mockReset()
     mockPingApiHealth.mockReset()
     mockPingApiHealth.mockResolvedValue({ status: 'ok', publication_insights_available: true })
+  })
+
+  it('keeps the metric tile on the compact line visual', () => {
+    const { metricTile } = renderInfluentialCitationsTile()
+
+    expect(metricTile.querySelector('.house-toggle-chart-line')).not.toBeNull()
+    expect(metricTile.querySelector('[data-ui="influential-citations-trend-bar"]')).toBeNull()
+    expect(within(metricTile).queryByText('Mean:')).not.toBeInTheDocument()
+    expect(within(metricTile).queryByText('Year')).not.toBeInTheDocument()
   })
 
   it('uses metric-specific tabs', () => {
