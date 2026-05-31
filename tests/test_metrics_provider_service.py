@@ -18,8 +18,13 @@ class _FakeResponse:
 
 
 class _FakeClient:
-    def __init__(self, route_responses: dict[str, _FakeResponse]):
+    def __init__(
+        self,
+        route_responses: dict[str, _FakeResponse],
+        captured_headers: list[dict[str, str] | None] | None = None,
+    ):
         self._route_responses = route_responses
+        self._captured_headers = captured_headers
 
     def __enter__(self):
         return self
@@ -27,7 +32,14 @@ class _FakeClient:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def get(self, url: str, params: dict[str, Any] | None = None) -> _FakeResponse:
+    def get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> _FakeResponse:
+        if self._captured_headers is not None:
+            self._captured_headers.append(headers)
         if "openalex.org" in url:
             filter_key = str((params or {}).get("filter", "")).strip()
             if filter_key:
@@ -127,6 +139,41 @@ def test_semantic_scholar_provider_matches_with_pmid(monkeypatch) -> None:
     assert payload["citations_count"] == 144
     assert payload["influential_citations"] == 12
     assert payload["payload_subset"]["match_method"] == "pmid"
+
+
+def test_semantic_scholar_provider_sends_configured_api_key(monkeypatch) -> None:
+    monkeypatch.setenv("SEMANTIC_SCHOLAR_API_KEY", "s2-test-key")
+    doi = "10.1000/test"
+    captured_headers: list[dict[str, str] | None] = []
+    responses = {
+        "https://api.semanticscholar.org/graph/v1/paper/DOI:10.1000%2Ftest": _FakeResponse(
+            200,
+            {
+                "paperId": "paper-42",
+                "citationCount": 18,
+                "influentialCitationCount": 2,
+                "url": "https://api.semanticscholar.org/paper/paper-42",
+            },
+        )
+    }
+    monkeypatch.setattr(
+        "research_os.services.metrics_provider_service.httpx.Client",
+        lambda timeout=12.0: _FakeClient(responses, captured_headers),
+    )
+
+    provider = SemanticScholarMetricsProvider()
+    payload = provider.fetch_metrics(
+        {
+            "title": "Pulmonary vascular patterns",
+            "doi": doi,
+            "url": "",
+        }
+    )
+
+    assert payload["provider"] == "semantic_scholar"
+    assert payload["influential_citations"] == 2
+    assert captured_headers
+    assert captured_headers[0] == {"x-api-key": "s2-test-key"}
 
 
 def test_openalex_provider_extracts_abstract_from_inverted_index(monkeypatch) -> None:

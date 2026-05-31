@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+import os
 import re
 import time
 from typing import Any
@@ -424,6 +425,11 @@ class SemanticScholarMetricsProvider(MetricsProvider):
         return ""
 
     @staticmethod
+    def _api_headers() -> dict[str, str]:
+        api_key = str(os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")).strip()
+        return {"x-api-key": api_key} if api_key else {}
+
+    @staticmethod
     def _request_with_retry(
         client: httpx.Client,
         *,
@@ -431,15 +437,18 @@ class SemanticScholarMetricsProvider(MetricsProvider):
         params: dict[str, Any] | None = None,
     ) -> httpx.Response:
         response: httpx.Response | None = None
+        headers = SemanticScholarMetricsProvider._api_headers()
         for attempt in range(REQUEST_RETRY_COUNT + 1):
-            response = client.get(url, params=params)
+            response = client.get(url, params=params, headers=headers or None)
             if (
                 response.status_code not in RETRYABLE_STATUS_CODES
                 or attempt >= REQUEST_RETRY_COUNT
             ):
                 return response
             time.sleep(REQUEST_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
-        return response if response is not None else client.get(url, params=params)
+        return response if response is not None else client.get(
+            url, params=params, headers=headers or None
+        )
 
     def _best_match_from_search(
         self,
