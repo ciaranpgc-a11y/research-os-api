@@ -11811,6 +11811,72 @@ function ImpactConcentrationBandsPanel({
   )
 }
 
+function ImpactConcentrationProfileDiagnostics({
+  stats,
+}: {
+  stats: ImpactConcentrationDrilldownStats
+}) {
+  const topPaperSharePct = stats.totalPublications > 0
+    ? (stats.topPapersCount / stats.totalPublications) * 100
+    : 0
+  const topSetAverage = stats.topPapersCount > 0
+    ? stats.top3Citations / stats.topPapersCount
+    : 0
+  const remainingAverage = stats.remainingPapersCount > 0
+    ? stats.restCitations / stats.remainingPapersCount
+    : 0
+  const citedTailPapers = Math.max(0, stats.remainingPapersCount - stats.uncitedPublicationsCount)
+  const citedTailAverage = citedTailPapers > 0
+    ? stats.restCitations / citedTailPapers
+    : 0
+  const topSetLeverage = topPaperSharePct > 0
+    ? stats.concentrationPct / topPaperSharePct
+    : 0
+  const densityGap = remainingAverage > 0
+    ? topSetAverage / remainingAverage
+    : 0
+  const diagnostics = [
+    {
+      label: 'Top-set leverage',
+      value: `${formatRoundedOneDecimalTrimmed(topSetLeverage)}x`,
+      secondary: `${formatPercentOne(topPaperSharePct)} of papers`,
+    },
+    {
+      label: 'Density gap',
+      value: `${formatRoundedOneDecimalTrimmed(densityGap)}x`,
+      secondary: 'Top set vs remaining',
+    },
+    {
+      label: 'Top-set average',
+      value: formatRoundedOneDecimalTrimmed(topSetAverage),
+      secondary: 'Citations per top paper',
+    },
+    {
+      label: 'Cited-tail average',
+      value: formatRoundedOneDecimalTrimmed(citedTailAverage),
+      secondary: `${formatInt(citedTailPapers)} cited tail papers`,
+    },
+  ]
+
+  return (
+    <div
+      className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+      data-ui="impact-concentration-profile-diagnostics"
+      style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+    >
+      {diagnostics.map((diagnostic) => (
+        <div key={diagnostic.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+          <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{diagnostic.label}</p>
+          <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+            <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{diagnostic.value}</p>
+          </div>
+          <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{diagnostic.secondary}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function MomentumTilePanel({
   tile,
   mode,
@@ -31365,71 +31431,10 @@ function renderImpactConcentrationDrilldownSection({
     return (
       <div className="house-publications-drilldown-bounded-section">
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Concentration profile</p>
+          <p className="house-drilldown-heading-block-title">Shape diagnostics</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
-            <DrilldownNarrativeCard
-              title="The headline share should be read with the long tail and uncited base."
-              body="This profile keeps the top-set share, remaining citation volume, and uncited papers together so the concentration signal is not reduced to one percentage."
-            />
-            <CitationSplitBarCard
-              bare
-              title={`Top ${formatInt(stats.topPapersCount)} vs remaining publications`}
-              subtitle="Citation volume split behind the current concentration percentage."
-              left={{
-                label: `Top ${formatInt(stats.topPapersCount)} ${stats.topPapersCount === 1 ? 'paper' : 'papers'}`,
-                value: `${formatInt(stats.top3Citations)} citations`,
-                ratioPct: stats.concentrationPct,
-                toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
-              }}
-              right={{
-                label: 'Long tail',
-                value: `${formatInt(stats.restCitations)} citations`,
-                ratioPct: Math.max(0, 100 - stats.concentrationPct),
-                toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
-              }}
-            />
-            <CanonicalTablePanel
-              title="Portfolio structure"
-              subtitle="Top-set, long-tail, and inactive-paper context for this snapshot."
-              columns={[
-                { key: 'segment', label: 'Segment' },
-                { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
-                { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
-                { key: 'share', label: 'Share', align: 'center', width: '1%' },
-              ]}
-              rows={[
-                {
-                  key: 'top',
-                  cells: {
-                    segment: 'Top cited set',
-                    papers: formatInt(stats.topPapersCount),
-                    citations: formatInt(stats.top3Citations),
-                    share: formatPercentWhole(stats.concentrationPct),
-                  },
-                },
-                {
-                  key: 'tail',
-                  cells: {
-                    segment: 'Remaining publications',
-                    papers: formatInt(stats.remainingPapersCount),
-                    citations: formatInt(stats.restCitations),
-                    share: formatPercentWhole(Math.max(0, 100 - stats.concentrationPct)),
-                  },
-                },
-                {
-                  key: 'uncited',
-                  cells: {
-                    segment: 'Uncited publications',
-                    papers: formatInt(stats.uncitedPublicationsCount),
-                    citations: '0',
-                    share: formatPercentWhole(stats.uncitedPublicationsPct),
-                  },
-                },
-              ]}
-            />
-          </div>
+          <ImpactConcentrationProfileDiagnostics stats={stats} />
         </div>
       </div>
     )

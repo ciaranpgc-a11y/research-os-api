@@ -202,4 +202,22 @@ describe('Impact concentration drilldown', () => {
     expect(within(dialog).queryByText(/Gini of/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/Curve against the equality line/i)).not.toBeInTheDocument()
   })
+
+  it('keeps the profile tab distinct from summary and distribution', () => {
+    renderImpactConcentrationDrilldown()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Profile' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.querySelector('[data-ui="impact-concentration-profile-diagnostics"]')).not.toBeNull()
+    expect(within(dialog).getByText('Shape diagnostics')).toBeInTheDocument()
+    expect(within(dialog).getByText('Top-set leverage')).toBeInTheDocument()
+    expect(within(dialog).getByText('Density gap')).toBeInTheDocument()
+    expect(within(dialog).getByText('Top-set average')).toBeInTheDocument()
+    expect(within(dialog).getByText('Cited-tail average')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Top 3 vs remaining publications')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Portfolio structure')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Citation bands')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/headline share should be read/i)).not.toBeInTheDocument()
+  })
 })
