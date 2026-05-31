@@ -31314,6 +31314,28 @@ function ImpactConcentrationSummary({
   const topPapersLabel = stats.topPapersCount === 1 ? 'paper' : 'papers'
   const giniText = stats.giniCoefficient === null ? '\u2014' : stats.giniCoefficient.toFixed(2)
   const restSharePct = Math.max(0, 100 - stats.concentrationPct)
+  const summaryMetricTiles = [
+    {
+      label: `Top ${formatInt(stats.topPapersCount)} share`,
+      value: formatPercentWhole(stats.concentrationPct),
+      secondary: `${formatInt(stats.top3Citations)} citations`,
+    },
+    {
+      label: 'Long-tail share',
+      value: formatPercentWhole(restSharePct),
+      secondary: `${formatInt(stats.restCitations)} citations`,
+    },
+    {
+      label: 'Gini coefficient',
+      value: giniText,
+      secondary: stats.classification,
+    },
+    {
+      label: 'Uncited papers',
+      value: formatPercentWhole(stats.uncitedPublicationsPct),
+      secondary: `${formatInt(stats.uncitedPublicationsCount)} of ${formatInt(stats.totalPublications)}`,
+    },
+  ]
 
   return (
     <div className="house-publications-drilldown-bounded-section">
@@ -31322,6 +31344,20 @@ function ImpactConcentrationSummary({
       </div>
       <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
         <div className="space-y-3">
+          <div
+            className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+            style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+          >
+            {summaryMetricTiles.map((metricTile) => (
+              <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
+                </div>
+                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
+              </div>
+            ))}
+          </div>
           <CitationSplitBarCard
             bare
             title={`Top ${formatInt(stats.topPapersCount)} vs long tail`}
@@ -31337,45 +31373,6 @@ function ImpactConcentrationSummary({
               ratioPct: restSharePct,
               toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
             }}
-          />
-          <CanonicalTablePanel
-            bare
-            variant="drilldown"
-            title="Concentration readout"
-            columns={[
-              { key: 'measure', label: 'Measure' },
-              { key: 'value', label: 'Value', align: 'center', width: '1%' },
-            ]}
-            rows={[
-              {
-                key: 'top-share',
-                cells: {
-                  measure: `Top ${formatInt(stats.topPapersCount)} ${topPapersLabel}`,
-                  value: `${formatPercentWhole(stats.concentrationPct)} (${formatInt(stats.top3Citations)})`,
-                },
-              },
-              {
-                key: 'long-tail',
-                cells: {
-                  measure: `${formatInt(stats.remainingPapersCount)} remaining ${pluralize(stats.remainingPapersCount, 'publication')}`,
-                  value: `${formatPercentWhole(restSharePct)} (${formatInt(stats.restCitations)})`,
-                },
-              },
-              {
-                key: 'gini',
-                cells: {
-                  measure: 'Gini coefficient',
-                  value: giniText,
-                },
-              },
-              {
-                key: 'uncited',
-                cells: {
-                  measure: 'Uncited papers',
-                  value: `${formatInt(stats.uncitedPublicationsCount)} / ${formatInt(stats.totalPublications)}`,
-                },
-              },
-            ]}
           />
         </div>
       </div>

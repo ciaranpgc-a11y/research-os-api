@@ -143,13 +143,17 @@ describe('Impact concentration drilldown', () => {
     expect(within(metricTile as HTMLElement).queryByText('Top cited set')).not.toBeInTheDocument()
   })
 
-  it('keeps the summary concise and leaves paper rows to the drivers tab', () => {
+  it('uses compact summary tiles and leaves paper rows to the drivers tab', () => {
     renderImpactConcentrationDrilldown()
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText('Impact concentration overview')).toBeInTheDocument()
+    expect(within(dialog).getByText('Top 3 share')).toBeInTheDocument()
+    expect(within(dialog).getByText('Long-tail share')).toBeInTheDocument()
+    expect(within(dialog).getByText('Gini coefficient')).toBeInTheDocument()
+    expect(within(dialog).getByText('Uncited papers')).toBeInTheDocument()
     expect(within(dialog).getByText('Top 3 vs long tail')).toBeInTheDocument()
-    expect(within(dialog).getByText('Concentration readout')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Concentration readout')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Top concentration drivers')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Leading citation paper')).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/portfolio-shape view/i)).not.toBeInTheDocument()
