@@ -248,4 +248,33 @@ describe('Influential citations drilldown', () => {
 
     expect(onOpenPublication).toHaveBeenCalledWith('w-1')
   })
+
+  it('does not show measured zero when recent influential history is unavailable', () => {
+    const tile = buildInfluentialCitationsTile()
+    const publications = [...(tile.drilldown?.publications || [])]
+    publications[0] = {
+      ...publications[0],
+      citations_lifetime: 374,
+      influential_last_12m: null,
+      influential_last_12m_available: false,
+    }
+    render(
+      <PublicationsTopStrip
+        metrics={buildMetricsPayload(buildInfluentialCitationsTile({
+          drilldown: {
+            ...tile.drilldown,
+            publications,
+          },
+        }))}
+        token="test-token"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Influential citations/i }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Drivers' }))
+
+    const row = screen.getByRole('row', { name: /Primary influential paper 74/i })
+    expect(row).toHaveTextContent('374')
+    expect(within(row).getByText('\u2014')).toBeInTheDocument()
+  })
 })

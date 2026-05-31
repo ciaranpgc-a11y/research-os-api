@@ -32129,7 +32129,9 @@ function renderInfluentialCitationsDrilldownSection({
                     onOpenPublication,
                   }),
                   influential: formatInt(publication.influentialCitations),
-                  recent: formatInt(publication.influentialLast12m),
+                  recent: publication.influentialLast12m === null
+                    ? '\u2014'
+                    : formatInt(publication.influentialLast12m),
                   lifetime: formatInt(publication.lifetimeCitations),
                 },
               }))}

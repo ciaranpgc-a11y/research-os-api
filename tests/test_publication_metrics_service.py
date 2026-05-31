@@ -162,6 +162,29 @@ def _tile(payload: dict[str, object], key: str) -> dict[str, object]:
     raise AssertionError(f"Tile '{key}' not found.")
 
 
+def test_influential_driver_publications_keep_lifetime_citations_and_unknown_recent_window(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics(email="influential-drivers@example.com")
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    tile = _tile(payload, "influential_citations")
+    drilldown = tile.get("drilldown")
+    assert isinstance(drilldown, dict)
+    publications = drilldown.get("publications")
+    assert isinstance(publications, list) and publications
+
+    lead = publications[0]
+    assert isinstance(lead, dict)
+    assert lead["title"] == "Work A"
+    assert lead["influential_citations"] == 7
+    assert lead["citations_lifetime"] == 25
+    assert lead["influential_last_12m"] is None
+    assert lead["influential_last_12m_available"] is False
+
+
 def test_metric_compute_helpers() -> None:
     assert compute_g_index([40, 30, 20, 10, 5]) == 5
     assert (

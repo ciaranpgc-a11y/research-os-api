@@ -38,7 +38,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 25
+TOP_METRICS_SCHEMA_VERSION = 26
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 DRILLDOWN_TILE_ID_BY_KEY = {
@@ -3371,6 +3371,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             preferred_provider="semantic_scholar",
             fallback_to_other_providers=False,
         )
+        semantic_recent_window_available = semantic_12 is not None
         if semantic_12 is None:
             monthly_semantic_added = [0 for _ in range(24)]
             semantic_cumulative_series = [semantic_latest_total for _ in range(25)]
@@ -3506,7 +3507,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 if len(monthly_added) >= 12
                 else None,
                 "influential_citations": latest_influential,
-                "influential_last_12m": int(sum(monthly_semantic_added[-12:])),
+                "influential_last_12m": int(sum(monthly_semantic_added[-12:]))
+                if semantic_recent_window_available
+                else None,
+                "influential_last_12m_available": semantic_recent_window_available,
                 "confidence_score": round(confidence_score, 2),
                 "confidence_label": confidence_label,
                 "match_method": match_method or "unknown",
@@ -3791,8 +3795,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "doi": row["doi"],
                     "year": row["year"],
                     "journal": row["journal"],
+                    "citations_lifetime": int(row.get("citations_lifetime") or 0),
                     "influential_citations": int(row.get("influential_citations") or 0),
-                    "influential_last_12m": int(row.get("influential_last_12m") or 0),
+                    "influential_last_12m": (
+                        int(row.get("influential_last_12m"))
+                        if row.get("influential_last_12m") is not None
+                        else None
+                    ),
+                    "influential_last_12m_available": bool(
+                        row.get("influential_last_12m_available")
+                    ),
                     "confidence_score": row["confidence_score"],
                     "confidence_label": row["confidence_label"],
                     "match_source": row["match_source"],

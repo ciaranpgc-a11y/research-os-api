@@ -152,7 +152,7 @@ export type InfluentialCitationsDrilldownStats = {
     venue: string
     lifetimeCitations: number
     influentialCitations: number
-    influentialLast12m: number
+    influentialLast12m: number | null
   }>
 }
 
@@ -255,7 +255,7 @@ type ParsedPublication = {
   shiftDelta: number | null
   confidenceLabel: string
   influentialCitations: number
-  influentialLast12m: number
+  influentialLast12m: number | null
   shareOfTotalPct: number
   fieldPercentileRank: number | null
   fieldName: string
@@ -441,6 +441,10 @@ function parsePublications(tile: PublicationMetricTilePayload): ParsedPublicatio
         ?? (monthlyAdded24.length >= 12 ? average(monthlyAdded24.slice(-12, -3)) : null)
       const shiftDelta = parseMetricNumber(row.momentum_shift_delta)
         ?? (recent3mAvg !== null && prior9mAvg !== null ? recent3mAvg - prior9mAvg : null)
+      const influentialLast12mRaw = parseMetricNumber(row.influential_last_12m)
+      const influentialLast12mAvailable = row.influential_last_12m_available === false
+        ? false
+        : influentialLast12mRaw !== null
       return {
         workId: String(row.work_id || row.id || `publication-${index}`),
         title: String(row.title || '').trim() || 'Untitled paper',
@@ -474,7 +478,9 @@ function parsePublications(tile: PublicationMetricTilePayload): ParsedPublicatio
         shiftDelta,
         confidenceLabel: toMetricText(row.confidence_label, 'Not labelled'),
         influentialCitations: Math.max(0, Math.round(parseMetricNumber(row.influential_citations) || 0)),
-        influentialLast12m: Math.max(0, Math.round(parseMetricNumber(row.influential_last_12m) || 0)),
+        influentialLast12m: influentialLast12mAvailable
+          ? Math.max(0, Math.round(influentialLast12mRaw ?? 0))
+          : null,
         shareOfTotalPct: Math.max(0, parseMetricNumber(row.share_of_total_pct) || 0),
         fieldPercentileRank: parseMetricNumber(row.field_percentile_rank),
         fieldName: toMetricText(row.field_name, 'Unassigned field'),
@@ -795,12 +801,12 @@ export function buildInfluentialCitationsDrilldownStats(tile: PublicationMetricT
       value: Math.max(0, Math.round(values[index] ?? fallbackValues[index] ?? 0)),
     })),
     topPublications: publications
-      .filter((publication) => publication.influentialCitations > 0 || publication.influentialLast12m > 0)
+      .filter((publication) => publication.influentialCitations > 0 || (publication.influentialLast12m ?? 0) > 0)
       .sort((left, right) => {
         if (right.influentialCitations !== left.influentialCitations) {
           return right.influentialCitations - left.influentialCitations
         }
-        return right.influentialLast12m - left.influentialLast12m
+        return (right.influentialLast12m ?? 0) - (left.influentialLast12m ?? 0)
       })
       .slice(0, 8)
       .map((publication) => ({
