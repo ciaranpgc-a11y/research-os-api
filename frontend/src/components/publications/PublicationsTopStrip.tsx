@@ -7024,6 +7024,14 @@ const IMPACT_CONCENTRATION_DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: s
   { value: 'methods', label: 'Methods' },
 ]
 
+const INFLUENTIAL_CITATIONS_DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
+  { value: 'summary', label: 'Summary' },
+  { value: 'breakdown', label: 'Drivers' },
+  { value: 'trajectory', label: 'Activity' },
+  { value: 'context', label: 'Profile' },
+  { value: 'methods', label: 'Methods' },
+]
+
 const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label: string }> = [
   { value: '1y', label: '1y' },
   { value: '3y', label: '3y' },
@@ -31453,18 +31461,50 @@ function renderInfluentialCitationsDrilldownSection({
   stats: InfluentialCitationsDrilldownStats
 }): ReactNode {
   if (activeTab === 'summary') {
+    const headlineMetrics = [
+      {
+        label: 'Total influential',
+        value: formatInt(stats.totalInfluentialCitations),
+        secondary: 'Provider-tagged citations',
+      },
+      {
+        label: 'Influential ratio',
+        value: formatPercentWhole(stats.influentialRatioPct),
+        secondary: 'of citation profile',
+      },
+      {
+        label: 'Last 12 months',
+        value: formatInt(stats.influenceLast12m),
+        secondary: 'recent influential cites',
+      },
+      {
+        label: '12m change',
+        value: formatSignedNumber(stats.influenceDelta, 0),
+        secondary: 'vs previous 12m',
+      },
+    ]
+
     return (
-      <div className="house-publications-drilldown-bounded-section">
+      <div className="house-publications-drilldown-bounded-section" data-ui="influential-citations-summary">
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Influential citation overview</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
-            <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title={`Influential citations currently account for ${formatPercentWhole(stats.influentialRatioPct)} of the citation profile.`}
-              body="This drilldown isolates citations tagged as influential by the enrichment provider so the summary focuses on quality-of-impact rather than raw volume alone."
-            />
+            <div
+              className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+            >
+              {headlineMetrics.map((metric) => (
+                <div key={metric.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metric.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metric.value}</p>
+                  </div>
+                  <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metric.secondary}</p>
+                </div>
+              ))}
+            </div>
             <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
               <div className="space-y-1">
                 <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Influential citations over time</p>
@@ -31473,54 +31513,10 @@ function renderInfluentialCitationsDrilldownSection({
               <div className="min-h-[11rem]">
                 <InfluentialTrendPanel
                   tile={tile}
-                  chartTitle="Influential citations over time"
                   chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
                 />
               </div>
             </div>
-            <CanonicalTablePanel
-              title="Influential citation readout"
-              subtitle="Canonical summary of influential volume and recent-window changes."
-              columns={[
-                { key: 'measure', label: 'Measure' },
-                { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                { key: 'meaning', label: 'Interpretation' },
-              ]}
-              rows={[
-                {
-                  key: 'total',
-                  cells: {
-                    measure: 'Influential citations',
-                    value: formatInt(stats.totalInfluentialCitations),
-                    meaning: 'Lifetime total tagged influential by the provider.',
-                  },
-                },
-                {
-                  key: 'ratio',
-                  cells: {
-                    measure: 'Influential ratio',
-                    value: formatPercentWhole(stats.influentialRatioPct),
-                    meaning: 'Influential share of the broader citation footprint.',
-                  },
-                },
-                {
-                  key: 'recent',
-                  cells: {
-                    measure: 'Last 12 months',
-                    value: formatInt(stats.influenceLast12m),
-                    meaning: 'Recent influential citation activity.',
-                  },
-                },
-                {
-                  key: 'previous',
-                  cells: {
-                    measure: 'Previous 12 months',
-                    value: formatInt(stats.influencePrev12m),
-                    meaning: 'Baseline recent-window comparator.',
-                  },
-                },
-              ]}
-            />
           </div>
         </div>
       </div>
@@ -31529,26 +31525,22 @@ function renderInfluentialCitationsDrilldownSection({
 
   if (activeTab === 'breakdown') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
+      <div className="house-publications-drilldown-bounded-section" data-ui="influential-citations-drivers">
         <div className="house-drilldown-heading-block">
           <p className="house-drilldown-heading-block-title">Paper-level influential contributors</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
-            <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title="Influential impact is being driven by a defined paper set."
-              body="The table below ranks papers by influential citations so the portfolioâ€™s most substantively influential works are visible separately from the broader citation distribution."
-            />
             <CanonicalTablePanel
+              bare
+              variant="drilldown"
+              suppressTopRowHighlight
               title="Top influential papers"
-              subtitle="Provider-tagged influential citation leaders across the publication set."
               columns={[
-                { key: 'paper', label: 'Paper' },
+                { key: 'paper', label: 'Paper', wrap: true },
                 { key: 'influential', label: 'Influential', align: 'center', width: '1%' },
                 { key: 'recent', label: 'Last 12m', align: 'center', width: '1%' },
-                { key: 'lifetime', label: 'Lifetime cites', align: 'center', width: '1%' },
-                { key: 'venue', label: 'Venue' },
+                { key: 'lifetime', label: 'Lifetime', align: 'center', width: '1%' },
               ]}
               rows={stats.topPublications.map((publication) => ({
                 key: publication.workId,
@@ -31557,7 +31549,6 @@ function renderInfluentialCitationsDrilldownSection({
                   influential: formatInt(publication.influentialCitations),
                   recent: formatInt(publication.influentialLast12m),
                   lifetime: formatInt(publication.lifetimeCitations),
-                  venue: publication.venue || '\u2014',
                 },
               }))}
               emptyMessage="No influential citation contributors available."
@@ -31913,6 +31904,16 @@ export function PublicationsTopStrip({
       }
       return impactConcentrationTabSubtitleByTab[activeDrilldownTab] || sanitizedActiveTileDefinition
     }
+    if (activeTile?.key === 'influential_citations') {
+      const influentialCitationsTabSubtitleByTab: Partial<Record<DrilldownTab, string>> = {
+        summary: 'Influential citation signal at a glance',
+        breakdown: 'Which papers are carrying influential citations',
+        trajectory: 'How influential citations are accumulating',
+        context: 'Coverage and provider context for the signal',
+        methods: 'How influential citations are defined',
+      }
+      return influentialCitationsTabSubtitleByTab[activeDrilldownTab] || sanitizedActiveTileDefinition
+    }
     return sanitizedActiveTileDefinition
   }, [activeDrilldownTab, activeTile?.key, sanitizedActiveTileDefinition])
 
@@ -31923,6 +31924,8 @@ export function PublicationsTopStrip({
         ? MOMENTUM_DRILLDOWN_TABS
       : activeTile?.key === 'impact_concentration'
         ? IMPACT_CONCENTRATION_DRILLDOWN_TABS
+      : activeTile?.key === 'influential_citations'
+        ? INFLUENTIAL_CITATIONS_DRILLDOWN_TABS
       : DRILLDOWN_TABS
   ), [activeTile?.key])
 
