@@ -161,17 +161,22 @@ describe('Impact concentration drilldown', () => {
     expect(within(dialog).queryByText('Concentration curve')).not.toBeInTheDocument()
   })
 
-  it('keeps the drivers tab compact and unclipped', () => {
+  it('separates the drivers headline tiles from the driver paper table', () => {
     renderImpactConcentrationDrilldown()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Drivers' }))
 
     const dialog = screen.getByRole('dialog')
+    const driverSummarySection = dialog.querySelector('[data-ui="impact-concentration-driver-summary"]')
+    const driverPapersSection = dialog.querySelector('[data-ui="impact-concentration-driver-papers"]')
+
+    expect(driverSummarySection).not.toBeNull()
+    expect(driverPapersSection).not.toBeNull()
+    expect(driverSummarySection?.contains(within(dialog).getByText('Top paper share'))).toBe(true)
+    expect(driverSummarySection?.contains(within(dialog).getByText('Top 3 share'))).toBe(true)
+    expect(driverPapersSection?.contains(within(dialog).getByText('Driver papers'))).toBe(true)
+    expect(driverPapersSection?.contains(within(dialog).getByText('Leading citation paper'))).toBe(true)
     expect(within(dialog).getByText('Top concentration drivers')).toBeInTheDocument()
-    expect(within(dialog).getByText('Top paper share')).toBeInTheDocument()
-    expect(within(dialog).getByText('Top 3 share')).toBeInTheDocument()
-    expect(within(dialog).getByText('Driver papers')).toBeInTheDocument()
-    expect(within(dialog).getByText('Leading citation paper')).toBeInTheDocument()
     expect(within(dialog).queryByText('Concentration ladder')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Type')).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/portfolio concentration is driven/i)).not.toBeInTheDocument()

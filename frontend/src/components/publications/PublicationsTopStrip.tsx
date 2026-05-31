@@ -31328,26 +31328,32 @@ function renderImpactConcentrationDrilldownSection({
 
   if (activeTab === 'breakdown') {
     return (
-      <div className="house-publications-drilldown-bounded-section">
-        <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Top concentration drivers</p>
-        </div>
-        <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-          <div className="space-y-3">
-            <div
-              className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
-              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
-            >
-              {driverMetricTiles.map((metricTile) => (
-                <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
-                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
-                  </div>
-                  <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
+      <>
+        <div
+          className="house-drilldown-content-block house-publications-headline-content house-drilldown-heading-content-block w-full"
+          data-ui="impact-concentration-driver-summary"
+        >
+          <div
+            className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+            style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+          >
+            {driverMetricTiles.map((metricTile) => (
+              <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
                 </div>
-              ))}
-            </div>
+                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="house-publications-drilldown-bounded-section" data-ui="impact-concentration-driver-papers">
+          <div className="house-drilldown-heading-block">
+            <p className="house-drilldown-heading-block-title">Top concentration drivers</p>
+          </div>
+          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
             <CanonicalTablePanel
               bare
               variant="drilldown"
@@ -31372,7 +31378,7 @@ function renderImpactConcentrationDrilldownSection({
             />
           </div>
         </div>
-      </div>
+      </>
     )
   }
 
