@@ -1,0 +1,20 @@
+services:
+  api:
+    build:
+      context: ./app
+    container_name: dev-research-os-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/var/data
+    networks:
+      - default
+      - postgres
+
+networks:
+  postgres:
+    external: true
+    name: postgres_default
