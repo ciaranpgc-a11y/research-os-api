@@ -7333,10 +7333,13 @@ function buildTileToggleThumbStyle(activeIndex: number, optionCount: number, isE
 function PublicationTrendsVisualToggle({
   value,
   onChange,
+  modes,
 }: {
   value: PublicationTrendsVisualMode
   onChange: (mode: PublicationTrendsVisualMode) => void
+  modes?: PublicationTrendsVisualMode[]
 }) {
+  const resolvedModes = modes && modes.length ? modes : (['bars', 'line', 'table'] as PublicationTrendsVisualMode[])
   return (
     <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
       <div
@@ -7344,9 +7347,12 @@ function PublicationTrendsVisualToggle({
         data-stop-tile-open="true"
         data-ui="publications-trends-visual-toggle"
         data-house-role="chart-toggle"
-        style={{ width: '7.75rem', gridTemplateColumns: '1fr 1fr 1fr' }}
+        style={{
+          width: resolvedModes.length <= 2 ? '5.35rem' : '7.75rem',
+          gridTemplateColumns: `repeat(${resolvedModes.length}, minmax(0, 1fr))`,
+        }}
       >
-        {(['bars', 'line', 'table'] as const).map((mode, optionIndex, options) => (
+        {resolvedModes.map((mode, optionIndex, options) => (
           <button
             key={mode}
             type="button"
@@ -31756,7 +31762,7 @@ function renderEnhancedGenericMetricDrilldownSection({
         })
         : null
     case 'impact_concentration':
-      return impactStats ? renderImpactConcentrationDrilldownSection({ activeTab, stats: impactStats }) : null
+      return impactStats ? renderImpactConcentrationDrilldownSection({ activeTab, stats: impactStats, onOpenPublication }) : null
     case 'influential_citations':
       return influentialStats ? renderInfluentialCitationsDrilldownSection({
         tile,
@@ -31766,6 +31772,7 @@ function renderEnhancedGenericMetricDrilldownSection({
         onTrendWindowModeChange: onInfluentialTrendWindowModeChange,
         trendVisualMode: influentialTrendVisualMode,
         onTrendVisualModeChange: onInfluentialTrendVisualModeChange,
+        onOpenPublication,
       }) : null
     case 'field_percentile_share':
       return fieldPercentileStats
@@ -31860,12 +31867,45 @@ function ImpactConcentrationSummary({
     </div>
   )
 }
+function renderPublicationTitleLinkCell({
+  title,
+  workId,
+  onOpenPublication,
+}: {
+  title: string
+  workId: string
+  onOpenPublication?: (workId: string) => void
+}): ReactNode {
+  const titleNode = <span className="block max-w-full break-words leading-snug">{title}</span>
+
+  if (!onOpenPublication || !workId) {
+    return titleNode
+  }
+
+  return (
+    <button
+      type="button"
+      data-stop-tile-open="true"
+      className="block w-full text-left text-[hsl(var(--tone-accent-700))] transition-colors duration-[var(--motion-duration-ui)] ease-out hover:text-[hsl(var(--tone-accent-800))] hover:underline focus-visible:outline-none focus-visible:underline"
+      onClick={(event) => {
+        event.stopPropagation()
+        onOpenPublication(workId)
+      }}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      {titleNode}
+    </button>
+  )
+}
+
 function renderImpactConcentrationDrilldownSection({
   activeTab,
   stats,
+  onOpenPublication,
 }: {
   activeTab: DrilldownTab
   stats: ImpactConcentrationDrilldownStats
+  onOpenPublication?: (workId: string) => void
 }): ReactNode {
   if (activeTab === 'summary') {
     return <ImpactConcentrationSummary stats={stats} />
@@ -31892,7 +31932,11 @@ function renderImpactConcentrationDrilldownSection({
             rows={stats.topPapers.map((publication) => ({
               key: publication.workId,
               cells: {
-                paper: publication.title,
+                paper: renderPublicationTitleLinkCell({
+                  title: publication.title,
+                  workId: publication.workId,
+                  onOpenPublication,
+                }),
                 citations: formatInt(publication.citations),
                 share: formatPercentOne(publication.shareOfTotalPct),
                 year: publication.year === null ? '\u2014' : formatInt(publication.year),
@@ -31945,6 +31989,7 @@ function renderInfluentialCitationsDrilldownSection({
   onTrendWindowModeChange,
   trendVisualMode,
   onTrendVisualModeChange,
+  onOpenPublication,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
@@ -31953,10 +31998,11 @@ function renderInfluentialCitationsDrilldownSection({
   onTrendWindowModeChange: (next: PublicationsWindowMode) => void
   trendVisualMode: PublicationTrendsVisualMode
   onTrendVisualModeChange: (next: PublicationTrendsVisualMode) => void
+  onOpenPublication?: (workId: string) => void
 }): ReactNode {
   if (activeTab === 'summary') {
     const influentialTrendTile = buildInfluentialTrendChartTile(tile)
-    const influentialTrendTableRows = buildCitationVolumeTableRows(influentialTrendTile, trendWindowMode)
+    const effectiveTrendVisualMode = trendVisualMode === 'table' ? 'bars' : trendVisualMode
     const headlineMetrics = [
       {
         label: 'Total influential',
@@ -32015,79 +32061,39 @@ function renderInfluentialCitationsDrilldownSection({
               </div>
               <div className="flex items-center">
                 <PublicationTrendsVisualToggle
-                  value={trendVisualMode}
+                  value={effectiveTrendVisualMode}
                   onChange={onTrendVisualModeChange}
+                  modes={['bars', 'line']}
                 />
               </div>
             </div>
             <div
               className={cn(
                 'house-drilldown-content-block w-full',
-                trendVisualMode === 'table'
-                  ? 'h-auto'
-                  : 'house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall',
+                'house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall',
               )}
             >
-              {trendVisualMode === 'table' ? (
-                <CanonicalTablePanel
-                  bare
-                  variant="drilldown"
-                  suppressTopRowHighlight
-                  columns={[
-                    {
-                      key: 'period',
-                      label: trendWindowMode === '1y' ? 'Month year' : 'Year',
-                      align: 'center',
-                      width: '1%',
-                    },
-                    { key: 'citations', label: 'Influential', align: 'center', width: '1%' },
-                    { key: 'change', label: 'Change', align: 'center', width: '1%' },
-                  ]}
-                  rows={influentialTrendTableRows.map((row) => ({
-                    key: row.key,
-                    cells: {
-                      period: row.projected ? (
-                        <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
-                          {row.periodLabel}
-                        </span>
-                      ) : row.periodLabel,
-                      citations: row.projected ? (
-                        <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
-                          {row.citations}
-                        </span>
-                      ) : row.citations,
-                      change: row.projected ? (
-                        <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
-                          {row.change}
-                        </span>
-                      ) : row.change,
-                    },
-                  }))}
-                  emptyMessage="No influential citation counts found in the selected period."
-                />
-              ) : (
-                <PublicationsPerYearChart
-                  tile={influentialTrendTile}
-                  animate
-                  showAxes
-                  yAxisLabel={trendVisualMode === 'line' ? 'Influential citations' : 'Influential citations (per year)'}
-                  xAxisLabel="Year"
-                  enableWindowToggle
-                  showPeriodHint
-                  showCurrentPeriodSemantic
-                  autoScaleByWindow
-                  showMeanLine
-                  showMeanValueLabel
-                  roundMeanValueInLongWindows
-                  longWindowLineXAxisTitleTranslateRem={1.1}
-                  subtleGrid
-                  activeWindowMode={trendWindowMode}
-                  onWindowModeChange={onTrendWindowModeChange}
-                  visualMode={trendVisualMode}
-                  onVisualModeChange={onTrendVisualModeChange}
-                  showWindowToggle={false}
-                />
-              )}
+              <PublicationsPerYearChart
+                tile={influentialTrendTile}
+                animate
+                showAxes
+                yAxisLabel={effectiveTrendVisualMode === 'line' ? 'Influential citations' : 'Influential citations (per year)'}
+                xAxisLabel="Year"
+                enableWindowToggle
+                showPeriodHint
+                showCurrentPeriodSemantic
+                autoScaleByWindow
+                showMeanLine
+                showMeanValueLabel
+                roundMeanValueInLongWindows
+                longWindowLineXAxisTitleTranslateRem={1.1}
+                subtleGrid
+                activeWindowMode={trendWindowMode}
+                onWindowModeChange={onTrendWindowModeChange}
+                visualMode={effectiveTrendVisualMode}
+                onVisualModeChange={onTrendVisualModeChange}
+                showWindowToggle={false}
+              />
             </div>
           </div>
         </div>
@@ -32117,7 +32123,11 @@ function renderInfluentialCitationsDrilldownSection({
               rows={stats.topPublications.map((publication) => ({
                 key: publication.workId,
                 cells: {
-                  paper: publication.title,
+                  paper: renderPublicationTitleLinkCell({
+                    title: publication.title,
+                    workId: publication.workId,
+                    onOpenPublication,
+                  }),
                   influential: formatInt(publication.influentialCitations),
                   recent: formatInt(publication.influentialLast12m),
                   lifetime: formatInt(publication.lifetimeCitations),

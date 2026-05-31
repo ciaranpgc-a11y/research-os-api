@@ -109,11 +109,16 @@ function buildMetricsPayload(tile: PublicationMetricTilePayload): PublicationsTo
   }
 }
 
-function renderInfluentialCitationsTile() {
+function renderInfluentialCitationsTile({
+  onOpenPublication,
+}: {
+  onOpenPublication?: (workId: string) => void
+} = {}) {
   const result = render(
     <PublicationsTopStrip
       metrics={buildMetricsPayload(buildInfluentialCitationsTile())}
       token="test-token"
+      onOpenPublication={onOpenPublication}
     />,
   )
   const metricTile = result.container.querySelector('[data-metric-key="influential_citations"]')
@@ -202,7 +207,7 @@ describe('Influential citations drilldown', () => {
     expect(toggle).not.toBeNull()
     expect(within(trendSection).getByRole('button', { name: 'Bar chart' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(trendSection).getByRole('button', { name: 'Line chart' })).toHaveAttribute('aria-pressed', 'false')
-    expect(within(trendSection).getByRole('button', { name: 'Table view' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(trendSection).queryByRole('button', { name: 'Table view' })).not.toBeInTheDocument()
 
     fireEvent.click(within(trendSection).getByRole('button', { name: 'Line chart' }))
 
@@ -231,5 +236,16 @@ describe('Influential citations drilldown', () => {
     expect(within(dialog).queryByText('Approved story')).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/defined paper set/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/Provider-tagged influential citation leaders/i)).not.toBeInTheDocument()
+  })
+
+  it('opens the matching publication from the drivers table title link', () => {
+    const onOpenPublication = vi.fn()
+    renderInfluentialCitationsTile({ onOpenPublication })
+
+    fireEvent.click(screen.getByRole('button', { name: /Influential citations/i }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Drivers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Primary influential paper' }))
+
+    expect(onOpenPublication).toHaveBeenCalledWith('w-1')
   })
 })

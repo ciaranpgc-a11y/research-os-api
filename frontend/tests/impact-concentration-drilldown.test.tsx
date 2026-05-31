@@ -96,11 +96,16 @@ function buildMetricsPayload(tile: PublicationMetricTilePayload): PublicationsTo
   }
 }
 
-function renderImpactConcentrationDrilldown() {
+function renderImpactConcentrationDrilldown({
+  onOpenPublication,
+}: {
+  onOpenPublication?: (workId: string) => void
+} = {}) {
   const result = render(
     <PublicationsTopStrip
       metrics={buildMetricsPayload(buildImpactConcentrationTile())}
       token="test-token"
+      onOpenPublication={onOpenPublication}
     />,
   )
   const metricTile = result.container.querySelector('[data-metric-key="impact_concentration"]')
@@ -182,6 +187,16 @@ describe('Impact concentration drilldown', () => {
     expect(within(dialog).queryByText('Type')).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/portfolio concentration is driven/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/table identifies the papers/i)).not.toBeInTheDocument()
+  })
+
+  it('opens the matching publication from the drivers table title link', () => {
+    const onOpenPublication = vi.fn()
+    renderImpactConcentrationDrilldown({ onOpenPublication })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Drivers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Leading citation paper' }))
+
+    expect(onOpenPublication).toHaveBeenCalledWith('w-1')
   })
 
   it('keeps the distribution tab compact and evidence-led', () => {
