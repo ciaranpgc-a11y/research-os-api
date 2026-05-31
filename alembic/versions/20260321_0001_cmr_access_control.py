@@ -61,18 +61,31 @@ def upgrade() -> None:
             ["access_code_id"],
         )
 
-    # Seed the reserved admin row
+    # Seed the reserved admin row (idempotent and dialect-neutral). SQLite has
+    # `INSERT OR IGNORE`, but Postgres does not — and a bare `1` is not a valid
+    # boolean there. Guard with a SELECT and bind typed params instead.
     from datetime import datetime, timezone
-    op.execute(
-        sa.text(
-            "INSERT OR IGNORE INTO cmr_access_codes (id, name, code_hash, created_at, session_count, is_active) "
-            "VALUES (:id, :name, NULL, :now, 0, 1)"
-        ).bindparams(
-            id="admin",
-            name="Admin",
-            now=datetime.now(timezone.utc).isoformat(),
+
+    conn = op.get_bind()
+    admin_exists = conn.execute(
+        sa.text("SELECT 1 FROM cmr_access_codes WHERE id = :id"),
+        {"id": "admin"},
+    ).first()
+    if not admin_exists:
+        conn.execute(
+            sa.text(
+                "INSERT INTO cmr_access_codes "
+                "(id, name, code_hash, created_at, session_count, is_active) "
+                "VALUES (:id, :name, NULL, :now, :session_count, :is_active)"
+            ),
+            {
+                "id": "admin",
+                "name": "Admin",
+                "now": datetime.now(timezone.utc).isoformat(),
+                "session_count": 0,
+                "is_active": True,
+            },
         )
-    )
 
 
 def downgrade() -> None:
