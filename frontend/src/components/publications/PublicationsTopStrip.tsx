@@ -6946,6 +6946,7 @@ type MomentumTrajectoryHistoryPoint = {
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type RecentConcentrationWindowMode = PublicationsWindowMode
 type PublicationTrendsVisualMode = 'bars' | 'line' | 'table'
+type InfluentialTrendMode = 'annual' | 'cumulative'
 type CitationActivationHistorySeriesMode = 'default' | 'activeInactive'
 type CitationMomentumViewMode = 'sleeping' | 'freshPickup'
 type CitationActivationTableMode = 'newlyActive' | 'stillActive' | 'inactive'
@@ -21087,6 +21088,7 @@ function GenericMetricDrilldownWorkspace({
   const [momentumTrajectoryViewMode, setMomentumTrajectoryViewMode] = useState<MomentumTrajectoryViewMode>('pace')
   const [momentumBreakdownBucket, setMomentumBreakdownBucket] = useState<MomentumBreakdownBucketKey>('new')
   const [momentumOverviewViewMode, setMomentumOverviewViewMode] = useState<SplitBreakdownViewMode>('bar')
+  const [influentialTrendMode, setInfluentialTrendMode] = useState<InfluentialTrendMode>('annual')
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
@@ -21140,6 +21142,7 @@ function GenericMetricDrilldownWorkspace({
     setCitationMomentumExpanded(true)
     setCitationMomentumViewMode('sleeping')
     setMomentumBreakdownBucket('new')
+    setInfluentialTrendMode('annual')
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
@@ -24897,6 +24900,8 @@ function GenericMetricDrilldownWorkspace({
             onMomentumOverviewViewModeChange: setMomentumOverviewViewMode,
             impactStats: impactConcentrationDrilldownStats,
             influentialStats: influentialCitationsDrilldownStats,
+            influentialTrendMode,
+            onInfluentialTrendModeChange: setInfluentialTrendMode,
             fieldPercentileStats: fieldPercentileDrilldownStats,
             authorshipStats: authorshipCompositionDrilldownStats,
             collaborationStats: collaborationStructureDrilldownStats,
@@ -25810,7 +25815,10 @@ function formatInfluentialTrendAxisLabel(label: string, index: number): Pick<Inf
   return { axisLabel: normalized || String(index + 1) }
 }
 
-function buildInfluentialTrendBars(tile: PublicationMetricTilePayload): InfluentialTrendBar[] {
+function buildInfluentialTrendSeries(tile: PublicationMetricTilePayload): Array<InfluentialTrendBar & {
+  annualValue: number
+  cumulativeValue: number
+}> {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const drilldown = (tile.drilldown || {}) as Record<string, unknown>
   const metadata = (drilldown.metadata || {}) as Record<string, unknown>
@@ -25834,26 +25842,47 @@ function buildInfluentialTrendBars(tile: PublicationMetricTilePayload): Influent
   const likelyCumulative = monotone
     && totalInfluential !== undefined
     && Math.abs(finalValue - totalInfluential) <= Math.max(1, totalInfluential * 0.08)
-  const periodValues = likelyCumulative
+  const annualValues = likelyCumulative
     ? sourceValues.map((value, index) => (
       index === 0
         ? Math.max(0, value)
         : Math.max(0, value - sourceValues[index - 1])
     ))
     : sourceValues
+  const cumulativeValues = likelyCumulative
+    ? sourceValues.map((value) => Math.max(0, value))
+    : annualValues.reduce<number[]>((acc, value) => {
+      const previous = acc[acc.length - 1] || 0
+      acc.push(previous + Math.max(0, value))
+      return acc
+    }, [])
   const labels = normalizeSeriesLabels(
     chartData.years || chartData.labels || chartData.window_labels,
-    periodValues.length,
+    annualValues.length,
     'Y',
   )
-  return periodValues.map((value, index) => {
+  return annualValues.map((value, index) => {
     const labelParts = formatInfluentialTrendAxisLabel(labels[index] || '', index)
     return {
       key: `influential-${labels[index] || index}-${index}`,
       ...labelParts,
       value: Math.max(0, value),
+      annualValue: Math.max(0, value),
+      cumulativeValue: Math.max(0, cumulativeValues[index] || 0),
     }
   })
+}
+
+function buildInfluentialTrendBars(
+  tile: PublicationMetricTilePayload,
+  mode: InfluentialTrendMode = 'annual',
+): InfluentialTrendBar[] {
+  return buildInfluentialTrendSeries(tile).map((point) => ({
+    key: `${point.key}-${mode}`,
+    axisLabel: point.axisLabel,
+    axisSubLabel: point.axisSubLabel,
+    value: mode === 'cumulative' ? point.cumulativeValue : point.annualValue,
+  }))
 }
 
 type InfluentialTrendPanelProps = {
@@ -25861,36 +25890,100 @@ type InfluentialTrendPanelProps = {
   chartTitle?: string
   chartTitleClassName?: string
   variant?: 'line' | 'bars'
+  trendMode?: InfluentialTrendMode
   showAxes?: boolean
   showMeanLine?: boolean
+}
+
+function InfluentialTrendModeToggle({
+  value,
+  onChange,
+}: {
+  value: InfluentialTrendMode
+  onChange: (mode: InfluentialTrendMode) => void
+}) {
+  const activeIndex = value === 'cumulative' ? 1 : 0
+
+  return (
+    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+      <div
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        data-stop-tile-open="true"
+        data-ui="influential-citations-trend-mode-toggle"
+        data-house-role="chart-toggle"
+        style={{ width: '12.25rem', minWidth: '12.25rem', maxWidth: '12.25rem' }}
+      >
+        <span
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={buildTileToggleThumbStyle(activeIndex, 2, false)}
+          aria-hidden="true"
+        />
+        {([
+          { value: 'annual', label: 'Annual' },
+          { value: 'cumulative', label: 'Cumulative' },
+        ] as const).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            data-stop-tile-open="true"
+            className={cn(
+              HOUSE_TOGGLE_BUTTON_CLASS,
+              'inline-flex items-center justify-center',
+              value === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+            )}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (value === option.value) {
+                return
+              }
+              onChange(option.value)
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+            aria-pressed={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function InfluentialTrendBarPanel({
   tile,
   chartTitle,
   chartTitleClassName,
+  trendMode = 'annual',
   showAxes = false,
   showMeanLine = false,
 }: InfluentialTrendPanelProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const bars = useMemo(() => buildInfluentialTrendBars(tile), [tile])
+  const linePathRef = useRef<SVGPathElement>(null)
+  const [linePathLength, setLinePathLength] = useState(0)
+  const bars = useMemo(() => buildInfluentialTrendBars(tile, trendMode), [tile, trendMode])
   const hasBars = bars.length > 0
   const values = bars.map((bar) => Math.max(0, bar.value))
   const meanValue = values.length
     ? values.reduce((sum, value) => sum + value, 0) / values.length
     : 0
   const meanDisplay = formatRoundedOneDecimalTrimmed(meanValue)
-  const maxObservedValue = Math.max(1, ...values, showMeanLine ? meanValue : 0)
+  const totalDisplay = formatInt(values[values.length - 1] || 0)
+  const maxObservedValue = Math.max(1, ...values, trendMode === 'annual' && showMeanLine ? meanValue : 0)
   const axisScale = buildNiceAxis(maxObservedValue)
   const axisMax = Math.max(1, axisScale.axisMax)
   const yAxisTickValues = axisScale.ticks
   const yAxisTickRatios = yAxisTickValues.map((tickValue) => axisMax <= 0 ? 0 : tickValue / axisMax)
   const animationKey = useMemo(
-    () => `influential-bars:${bars.map((bar) => `${bar.key}-${bar.value}`).join('|') || 'empty'}:${showAxes ? 'axes' : 'compact'}`,
-    [bars, showAxes],
+    () => `influential-${trendMode}:${bars.map((bar) => `${bar.key}-${bar.value}`).join('|') || 'empty'}:${showAxes ? 'axes' : 'compact'}`,
+    [bars, showAxes, trendMode],
   )
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
   const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
+  const lineEntryKey = `${animationKey}|line`
+  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, trendMode === 'cumulative' && hasBars)
+  const lineTransitionDuration = tileChartDurationVar(
+    useIsFirstChartEntry(lineEntryKey, trendMode === 'cumulative' && hasBars),
+  )
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const xAxisLayout = buildChartAxisLayout({
     axisLabels: bars.map((bar) => bar.axisLabel),
@@ -25935,10 +26028,48 @@ function InfluentialTrendBarPanel({
   const totalGapPct = slotGapPct * Math.max(0, bars.length - 1)
   const slotWidthPct = Math.max(PUBLICATIONS_CHART_SLOT_MIN_WIDTH_PCT, (100 - totalGapPct) / Math.max(1, bars.length))
   const slotStepPct = slotWidthPct + slotGapPct
+  const linePoints = useMemo(() => {
+    if (!values.length) {
+      return []
+    }
+    const step = values.length > 1 ? 100 / (values.length - 1) : 0
+    return values.map((value, index) => ({
+      x: values.length > 1 ? index * step : 50,
+      y: 100 - Math.max(0, Math.min(100, (value / axisMax) * 100)),
+      value,
+      label: bars[index]?.axisSubLabel
+        ? `${bars[index]?.axisLabel} ${bars[index]?.axisSubLabel}`
+        : bars[index]?.axisLabel || `${index + 1}`,
+    }))
+  }, [axisMax, bars, values])
+  const linePath = useMemo(
+    () => (linePoints.length ? monotonePathFromPoints(linePoints) : ''),
+    [linePoints],
+  )
+  const lineAreaPath = linePath && linePoints.length
+    ? `${linePath} L ${linePoints[linePoints.length - 1].x},100 L ${linePoints[0].x},100 Z`
+    : ''
+  const lineFallbackLength = useMemo(
+    () => Math.max(1, estimateInfluentialPolylineLength(linePoints)),
+    [linePoints],
+  )
+  const effectiveLinePathLength = linePathLength > 0 ? linePathLength : lineFallbackLength
 
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
+
+  useEffect(() => {
+    if (linePathRef.current) {
+      try {
+        setLinePathLength(linePathRef.current.getTotalLength())
+      } catch {
+        setLinePathLength(0)
+      }
+    } else {
+      setLinePathLength(0)
+    }
+  }, [linePath])
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No influential citation trend</div>
@@ -25961,9 +26092,13 @@ function InfluentialTrendBarPanel({
         data-ui="influential-citations-chart-frame"
         data-house-role="chart-frame"
       >
-        {showMeanLine ? (
+        {trendMode === 'annual' && showMeanLine ? (
           <p className={cn(HOUSE_DRILLDOWN_CHART_META_CLASS, HOUSE_HEADING_LABEL_CLASS, 'pointer-events-none absolute right-2 top-0 z-[2]')}>
             <span>Mean:</span> {meanDisplay} per year
+          </p>
+        ) : trendMode === 'cumulative' ? (
+          <p className={cn(HOUSE_DRILLDOWN_CHART_META_CLASS, HOUSE_HEADING_LABEL_CLASS, 'pointer-events-none absolute right-2 top-0 z-[2]')}>
+            <span>Total:</span> {totalDisplay}
           </p>
         ) : null}
         <div className="absolute overflow-visible" style={plotAreaStyle}>
@@ -25983,7 +26118,7 @@ function InfluentialTrendBarPanel({
             ))}
             <div className={cn('absolute inset-x-0 bottom-0', HOUSE_CHART_GRID_LINE_SUBTLE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)} />
           </div>
-          {showMeanLine ? (
+          {trendMode === 'annual' && showMeanLine ? (
             <div
               className={cn(
                 'pointer-events-none absolute inset-x-0',
@@ -25997,55 +26132,125 @@ function InfluentialTrendBarPanel({
               aria-hidden="true"
             />
           ) : null}
-          <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
-            {bars.map((bar, index) => {
-              const value = Math.max(0, bar.value)
-              const heightPct = value <= 0 ? 2.5 : Math.max(7, (value / axisMax) * 100)
-              const isActive = hoveredIndex === index
-              const leftPct = index * slotStepPct
-              const toneClass = value > 0 ? HOUSE_CHART_BAR_ACCENT_CLASS : HOUSE_CHART_BAR_NEUTRAL_CLASS
-              return (
-                <div
-                  key={bar.key}
-                  className="absolute inset-y-0 z-[1]"
-                  style={{
-                    left: `${leftPct}%`,
-                    width: `${slotWidthPct}%`,
-                  }}
-                >
-                  <span
-                    className={cn(
-                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-                    )}
-                    style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
+          {trendMode === 'cumulative' ? (
+            <div className="absolute inset-0" data-ui="influential-citations-cumulative-chart" data-house-role="chart-line">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
+                {lineAreaPath ? (
+                  <path
+                    d={lineAreaPath}
+                    fill="hsl(var(--tone-accent-400) / 0.12)"
+                    className={HOUSE_TOGGLE_CHART_MORPH_CLASS}
+                    style={{
+                      opacity: lineExpanded ? 1 : 0,
+                      transitionDuration: lineTransitionDuration,
+                    }}
                     aria-hidden="true"
-                  >
-                    {formatInt(value)}
-                  </span>
+                  />
+                ) : null}
+                <path
+                  ref={linePathRef}
+                  d={linePath}
+                  fill="none"
+                  stroke="hsl(var(--tone-accent-500))"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                  shapeRendering="geometricPrecision"
+                  className="house-toggle-chart-line"
+                  data-expanded={lineExpanded ? 'true' : 'false'}
+                  data-ui="influential-citations-cumulative-line"
+                  style={{
+                    '--chart-path-length': effectiveLinePathLength,
+                    transitionDuration: lineTransitionDuration,
+                  } as CSSProperties}
+                />
+              </svg>
+              {linePoints.map((point, index) => {
+                const isActive = hoveredIndex === index
+                return (
                   <span
+                    key={`influential-cumulative-point-${bars[index]?.key || index}`}
                     className={cn(
-                      'absolute bottom-0 block w-full rounded',
-                      HOUSE_TOGGLE_CHART_BAR_CLASS,
-                      toneClass,
-                      isActive && 'brightness-[1.08] saturate-[1.14]',
+                      'absolute z-[2] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[hsl(var(--tone-accent-500))] shadow-sm transition-[opacity,transform,filter] ease-out',
+                      lineExpanded ? 'opacity-100' : 'opacity-0',
+                      isActive && 'scale-125 brightness-[1.08] saturate-[1.14]',
                     )}
-                    data-ui="influential-citations-trend-bar"
+                    data-ui="influential-citations-cumulative-point"
                     onMouseEnter={() => setHoveredIndex(index)}
                     onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                     style={{
-                      height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
-                      transformOrigin: 'bottom',
-                      transitionProperty: 'height,transform,filter,box-shadow,opacity',
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
                       transitionDelay: tileMotionEntryDelay(index, isEntryCycle),
                       transitionDuration: tileMotionEntryDuration(index, isEntryCycle),
                     }}
-                  />
-                </div>
-              )
-            })}
-          </div>
+                  >
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                      )}
+                      style={{ bottom: `calc(100% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
+                      aria-hidden="true"
+                    >
+                      {formatInt(point.value)}
+                    </span>
+                  </span>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
+              {bars.map((bar, index) => {
+                const value = Math.max(0, bar.value)
+                const heightPct = value <= 0 ? 2.5 : Math.max(7, (value / axisMax) * 100)
+                const isActive = hoveredIndex === index
+                const leftPct = index * slotStepPct
+                const toneClass = value > 0 ? HOUSE_CHART_BAR_ACCENT_CLASS : HOUSE_CHART_BAR_NEUTRAL_CLASS
+                return (
+                  <div
+                    key={bar.key}
+                    className="absolute inset-y-0 z-[1]"
+                    style={{
+                      left: `${leftPct}%`,
+                      width: `${slotWidthPct}%`,
+                    }}
+                  >
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                      )}
+                      style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
+                      aria-hidden="true"
+                    >
+                      {formatInt(value)}
+                    </span>
+                    <span
+                      className={cn(
+                        'absolute bottom-0 block w-full rounded',
+                        HOUSE_TOGGLE_CHART_BAR_CLASS,
+                        toneClass,
+                        isActive && 'brightness-[1.08] saturate-[1.14]',
+                      )}
+                      data-ui="influential-citations-trend-bar"
+                      onMouseEnter={() => setHoveredIndex(index)}
+                      onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                      style={{
+                        height: `${heightPct}%`,
+                        transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                        transformOrigin: 'bottom',
+                        transitionProperty: 'height,transform,filter,box-shadow,opacity',
+                        transitionDelay: tileMotionEntryDelay(index, isEntryCycle),
+                        transitionDuration: tileMotionEntryDuration(index, isEntryCycle),
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
         {showAxes ? (
           <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
@@ -26070,7 +26275,7 @@ function InfluentialTrendBarPanel({
               className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
               style={{ left: '36%' }}
             >
-              Influential citations
+              {trendMode === 'cumulative' ? 'Cumulative influential citations' : 'Influential citations'}
             </p>
           </div>
         ) : null}
@@ -31563,6 +31768,8 @@ function renderEnhancedGenericMetricDrilldownSection({
   onMomentumOverviewViewModeChange,
   impactStats,
   influentialStats,
+  influentialTrendMode,
+  onInfluentialTrendModeChange,
   fieldPercentileStats,
   authorshipStats,
   collaborationStats,
@@ -31587,6 +31794,8 @@ function renderEnhancedGenericMetricDrilldownSection({
   onMomentumOverviewViewModeChange: (next: SplitBreakdownViewMode) => void
   impactStats: ImpactConcentrationDrilldownStats | null
   influentialStats: InfluentialCitationsDrilldownStats | null
+  influentialTrendMode: InfluentialTrendMode
+  onInfluentialTrendModeChange: (next: InfluentialTrendMode) => void
   fieldPercentileStats: FieldPercentileShareDrilldownStats | null
   authorshipStats: AuthorshipCompositionDrilldownStats | null
   collaborationStats: CollaborationStructureDrilldownStats | null
@@ -31619,7 +31828,13 @@ function renderEnhancedGenericMetricDrilldownSection({
     case 'impact_concentration':
       return impactStats ? renderImpactConcentrationDrilldownSection({ activeTab, stats: impactStats }) : null
     case 'influential_citations':
-      return influentialStats ? renderInfluentialCitationsDrilldownSection({ tile, activeTab, stats: influentialStats }) : null
+      return influentialStats ? renderInfluentialCitationsDrilldownSection({
+        tile,
+        activeTab,
+        stats: influentialStats,
+        trendMode: influentialTrendMode,
+        onTrendModeChange: onInfluentialTrendModeChange,
+      }) : null
     case 'field_percentile_share':
       return fieldPercentileStats
         ? renderFieldPercentileDrilldownSection({
@@ -31794,10 +32009,14 @@ function renderInfluentialCitationsDrilldownSection({
   tile,
   activeTab,
   stats,
+  trendMode,
+  onTrendModeChange,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
   stats: InfluentialCitationsDrilldownStats
+  trendMode: InfluentialTrendMode
+  onTrendModeChange: (next: InfluentialTrendMode) => void
 }): ReactNode {
   if (activeTab === 'summary') {
     const headlineMetrics = [
@@ -31852,11 +32071,17 @@ function renderInfluentialCitationsDrilldownSection({
             <p className="house-drilldown-heading-block-title">Influential citations over time</p>
           </div>
           <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+            <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-start')}>
+              <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                <InfluentialTrendModeToggle value={trendMode} onChange={onTrendModeChange} />
+              </div>
+            </div>
             <div className="house-drilldown-content-block w-full house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall">
               <InfluentialTrendPanel
                 tile={tile}
                 chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
                 variant="bars"
+                trendMode={trendMode}
                 showAxes
                 showMeanLine
               />

@@ -189,6 +189,27 @@ describe('Influential citations drilldown', () => {
     expect(chart?.querySelector('.house-line-chart-surface')).toBeNull()
   })
 
+  it('toggles the summary trend between annual bars and cumulative line view', () => {
+    renderInfluentialCitationsDrilldown()
+
+    const dialog = screen.getByRole('dialog')
+    const trendSection = dialog.querySelector('[data-ui="influential-citations-trend-section"]') as HTMLElement
+    expect(trendSection).not.toBeNull()
+
+    expect(within(trendSection).getByRole('button', { name: 'Annual' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(trendSection).getByRole('button', { name: 'Cumulative' })).toHaveAttribute('aria-pressed', 'false')
+    expect(trendSection.querySelectorAll('[data-ui="influential-citations-trend-bar"]').length).toBeGreaterThan(0)
+
+    fireEvent.click(within(trendSection).getByRole('button', { name: 'Cumulative' }))
+
+    expect(within(trendSection).getByRole('button', { name: 'Annual' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(trendSection).getByRole('button', { name: 'Cumulative' })).toHaveAttribute('aria-pressed', 'true')
+    expect(trendSection.querySelector('[data-ui="influential-citations-cumulative-line"]')).not.toBeNull()
+    expect(trendSection.querySelector('[data-ui="influential-citations-trend-bar"]')).toBeNull()
+    expect(within(trendSection).getByText('Cumulative influential citations')).toBeInTheDocument()
+    expect(within(trendSection).getByText('Total:')).toBeInTheDocument()
+  })
+
   it('keeps drivers focused on paper-level evidence', () => {
     renderInfluentialCitationsDrilldown()
 
