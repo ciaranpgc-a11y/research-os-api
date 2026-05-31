@@ -7016,6 +7016,14 @@ const MOMENTUM_DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
   { value: 'methods', label: 'Methods' },
 ]
 
+const IMPACT_CONCENTRATION_DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
+  { value: 'summary', label: 'Summary' },
+  { value: 'breakdown', label: 'Drivers' },
+  { value: 'trajectory', label: 'Distribution' },
+  { value: 'context', label: 'Profile' },
+  { value: 'methods', label: 'Methods' },
+]
+
 const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label: string }> = [
   { value: '1y', label: '1y' },
   { value: '3y', label: '3y' },
@@ -11593,95 +11601,26 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
   const rest = values[1] || 0
-  const total = Math.max(0, top3 + rest)
-  const ringRadius = 38
-  const ringCircumference = 2 * Math.PI * ringRadius
+  const total = top3 + rest
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
-  const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
-  const top3AnimatedDash = (top3PctRounded / 100) * ringCircumference
-  const explicitTotalPublicationsCandidates = [
-    Number(chartData.total_publications),
-    Number(chartData.total_publications_count),
-    Number(chartData.total_papers),
-    Number(chartData.paper_count),
-  ]
-  const explicitTotalPublications = explicitTotalPublicationsCandidates.find(
-    (item) => Number.isFinite(item) && item >= 0,
-  )
-  const uncitedCountRaw = Number(chartData.uncited_publications_count)
-  const uncitedPctRaw = Number(chartData.uncited_publications_pct)
-  const inferredTotalPublications = Number.isFinite(uncitedCountRaw) && Number.isFinite(uncitedPctRaw) && uncitedPctRaw > 0
-    ? Math.max(0, Math.round(uncitedCountRaw / (uncitedPctRaw / 100)))
-    : null
-  const totalPublications = explicitTotalPublications !== undefined
-    ? Math.max(0, Math.round(explicitTotalPublications))
-    : inferredTotalPublications
-  const topPapersCountRaw = Number(chartData.top_papers_count ?? chartData.top_paper_count ?? 3)
-  const topPapersCount = Math.max(0, Math.round(Number.isFinite(topPapersCountRaw) ? topPapersCountRaw : 3))
-  const effectiveTopPapersCount = totalPublications === null
-    ? topPapersCount
-    : Math.max(0, Math.min(topPapersCount, totalPublications))
-  const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
-  const ringAnimationKey = useMemo(
-    () => `${top3PctRounded}|${totalPublications ?? 'na'}|${effectiveTopPapersCount}`,
-    [effectiveTopPapersCount, top3PctRounded, totalPublications],
-  )
-  const isImpactConcentrationEntryCycle = useIsFirstChartEntry(ringAnimationKey, total > 0)
-  const ringVisible = useUnifiedToggleBarAnimation(ringAnimationKey, total > 0)
-  const ringVisibleDash = ringVisible ? top3AnimatedDash : 0
-  const ringTransitionDuration = ringChartDurationVar(isImpactConcentrationEntryCycle)
+  const restPct = Math.max(0, 100 - top3Pct)
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex-1 min-h-0 flex flex-col py-1.5">
-        <div className="flex-1" />
-        <div
-          className={cn(
-            HOUSE_CHART_TRANSITION_CLASS,
-            HOUSE_CHART_RING_ENTERED_CLASS,
-          )}
-        >
-          {total > 0 ? (
-            <div className={HOUSE_CHART_RING_PANEL_CLASS}>
-              <svg
-                viewBox="0 0 100 100"
-                className={HOUSE_CHART_RING_SIZE_CLASS}
-                data-stop-tile-open="true"
-              >
-                <circle
-                  cx="50"
-                  cy="50"
-                  r={ringRadius}
-                  fill="none"
-                  className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
-                  strokeWidth={ringStrokeWidth}
-                  strokeLinecap="round"
-                  transform="rotate(-90 50 50)"
-                />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r={ringRadius}
-                  fill="none"
-                  className={cn(HOUSE_CHART_RING_MAIN_SVG_CLASS, 'house-chart-ring-dasharray-motion')}
-                  strokeWidth={ringStrokeWidth}
-                  strokeLinecap="round"
-                  transform="rotate(-90 50 50)"
-                  style={{
-                    strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
-                    strokeDashoffset: 0,
-                    '--chart-transition-duration': ringTransitionDuration,
-                  } as React.CSSProperties}
-                />
-              </svg>
-            </div>
-          ) : (
-            <div className={dashboardTileStyles.emptyChart}>No concentration data</div>
-          )}
-        </div>
-        <div className="flex-1" />
-      </div>
-    </div>
+    <CitationSplitBarCard
+      bare
+      left={{
+        label: 'Top cited set',
+        value: formatPercentWhole(top3Pct),
+        ratioPct: top3Pct,
+        toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+      }}
+      right={{
+        label: 'Long tail',
+        value: formatPercentWhole(restPct),
+        ratioPct: restPct,
+        toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
+      }}
+    />
   )
 }
 
@@ -26280,7 +26219,7 @@ function CitationConcentrationLadderCard({
                 <p className="text-sm font-semibold leading-tight text-[hsl(var(--tone-neutral-800))]">{step.label}</p>
                 {detailMode === 'full' ? (
                   <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>
-                    {`${formatInt(step.paperCount)} ${pluralize(step.paperCount, 'publication')} â€¢ ${formatPercentWhole(step.paperSharePct)} of publications`}
+                    {`${formatInt(step.paperCount)} ${pluralize(step.paperCount, 'publication')} - ${formatPercentWhole(step.paperSharePct)} of publications`}
                   </p>
                 ) : null}
               </div>
@@ -31298,238 +31237,107 @@ function renderEnhancedGenericMetricDrilldownSection({
   }
 }
 
-type ImpactConcentrationInsightKey = 'concentration' | 'curve' | 'readout'
-
 function ImpactConcentrationSummary({
   stats,
-  tile,
 }: {
   stats: ImpactConcentrationDrilldownStats
-  tile: PublicationMetricTilePayload
 }) {
-  const [openInsight, setOpenInsight] = useState<ImpactConcentrationInsightKey | null>(null)
-  const [topSetExpanded, setTopSetExpanded] = useState(true)
-  const [curveExpanded, setCurveExpanded] = useState(true)
-  const [readoutExpanded, setReadoutExpanded] = useState(true)
-
-  const toggleInsight = (key: ImpactConcentrationInsightKey) =>
-    setOpenInsight((current) => (current === key ? null : key))
-  const closeInsight = () => setOpenInsight(null)
-
   const topPapersLabel = stats.topPapersCount === 1 ? 'paper' : 'papers'
-  const giniText = stats.giniCoefficient === null ? '—' : stats.giniCoefficient.toFixed(2)
-  const hasCurve = stats.lorenzPoints.length >= 2
+  const giniText = stats.giniCoefficient === null ? '\u2014' : stats.giniCoefficient.toFixed(2)
+  const restSharePct = Math.max(0, 100 - stats.concentrationPct)
+  const leadingDriverRows = stats.topPapers.slice(0, Math.max(3, stats.topPapersCount))
+  const summaryMetricTiles = [
+    {
+      label: `Top ${formatInt(stats.topPapersCount)} share`,
+      value: formatPercentWhole(stats.concentrationPct),
+      secondary: `${formatInt(stats.top3Citations)} citations`,
+    },
+    {
+      label: 'Long-tail share',
+      value: formatPercentWhole(restSharePct),
+      secondary: `${formatInt(stats.restCitations)} citations`,
+    },
+    {
+      label: 'Gini coefficient',
+      value: giniText,
+      secondary: stats.classification,
+    },
+    {
+      label: 'Uncited papers',
+      value: formatPercentWhole(stats.uncitedPublicationsPct),
+      secondary: `${formatInt(stats.uncitedPublicationsCount)} of ${formatInt(stats.totalPublications)}`,
+    },
+  ]
 
   return (
-    <>
-      <div className="house-publications-drilldown-bounded-section relative">
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-          <HelpTooltipIconButton
-            ariaLabel="Explain top-set concentration"
-            content="Share of your lifetime citations carried by your most-cited papers. A higher share means impact rests on a small set of standout works."
+    <div className="house-publications-drilldown-bounded-section">
+      <div className="house-drilldown-heading-block">
+        <p className="house-drilldown-heading-block-title">Impact concentration overview</p>
+      </div>
+      <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
+        <div className="space-y-3">
+          <DrilldownNarrativeCard
+            title={`The top ${formatInt(stats.topPapersCount)} ${topPapersLabel} carry ${formatPercentWhole(stats.concentrationPct)} of lifetime citations.`}
+            body="This is the portfolio-shape view: it separates citation impact carried by the leading papers from the wider publication tail."
           />
-          <PublicationInsightsTriggerButton
-            ariaLabel="Open top-set concentration insight"
-            active={openInsight === 'concentration'}
-            onClick={() => toggleInsight('concentration')}
-          />
-        </div>
-        <StaticPublicationInsightsOverlay
-          open={openInsight === 'concentration'}
-          onClose={closeInsight}
-          title="What does top-set concentration tell me?"
-          body="Concentration measures how much of your lifetime citation total is carried by your few most-cited papers. A high share means influence rests on a small set of standout works; a lower share means citations are spread more evenly across the portfolio."
-          considerationLabel="How to read it"
-          consideration="A high concentration is not inherently good or bad. Pair the headline percentage with the concentration curve and Gini below to judge whether your influence is broad-based or driven by a handful of landmark papers."
-        />
-        <div className="house-drilldown-heading-block">
-          <div className="flex items-center justify-between gap-2 pr-16">
-            <p className="house-drilldown-heading-block-title">Top-set concentration</p>
-            <DrilldownSheet.HeadingToggle
-              expanded={topSetExpanded}
-              expandedLabel="Collapse top-set concentration"
-              collapsedLabel="Expand top-set concentration"
-              onClick={(event) => {
-                event.stopPropagation()
-                setTopSetExpanded((value) => !value)
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-            />
-          </div>
-        </div>
-        {topSetExpanded ? (
-          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <div className="space-y-3">
-              <DrilldownNarrativeCard
-                eyebrow="Approved story"
-                title={`The top ${formatInt(stats.topPapersCount)} ${topPapersLabel} currently account for ${Math.round(stats.concentrationPct)}% of total citations.`}
-                body="This drilldown shows how much of the citation portfolio is concentrated in a very small subset of papers. It is most useful for distinguishing broad portfolio depth from dependence on a handful of standout publications."
-              />
-              <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-                <div className="space-y-1">
-                  <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Top-set versus long tail</p>
-                  <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">Visual split between the top-cited set and the remaining publication tail.</p>
+          <div
+            className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+            style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+          >
+            {summaryMetricTiles.map((metricTile) => (
+              <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
                 </div>
-                <div className="min-h-[11rem]">
-                  <ImpactConcentrationPanel tile={tile} />
-                </div>
+                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
               </div>
-            </div>
+            ))}
           </div>
-        ) : null}
+          <CitationSplitBarCard
+            bare
+            title={`Top ${formatInt(stats.topPapersCount)} vs long tail`}
+            subtitle="Citation share carried by the leading papers compared with the rest of the portfolio."
+            left={{
+              label: `Top ${formatInt(stats.topPapersCount)} ${topPapersLabel}`,
+              value: `${formatPercentWhole(stats.concentrationPct)} (${formatInt(stats.top3Citations)})`,
+              ratioPct: stats.concentrationPct,
+              toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+            }}
+            right={{
+              label: `${formatInt(stats.remainingPapersCount)} remaining ${pluralize(stats.remainingPapersCount, 'publication')}`,
+              value: `${formatPercentWhole(restSharePct)} (${formatInt(stats.restCitations)})`,
+              ratioPct: restSharePct,
+              toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
+            }}
+          />
+          <CanonicalTablePanel
+            bare
+            variant="drilldown"
+            title="Top concentration drivers"
+            subtitle="Highest-cited papers contributing to the current concentration profile."
+            columns={[
+              { key: 'paper', label: 'Paper', wrap: true },
+              { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
+              { key: 'share', label: 'Share', align: 'center', width: '1%' },
+              { key: 'year', label: 'Year', align: 'center', width: '1%' },
+            ]}
+            rows={leadingDriverRows.map((publication) => ({
+              key: publication.workId,
+              cells: {
+                paper: publication.title,
+                citations: formatInt(publication.citations),
+                share: formatPercentOne(publication.shareOfTotalPct),
+                year: publication.year === null ? '\u2014' : formatInt(publication.year),
+              },
+            }))}
+            emptyMessage="No concentration driver papers available."
+          />
+        </div>
       </div>
-
-      <div className="house-publications-drilldown-bounded-section relative">
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-          <HelpTooltipIconButton
-            ariaLabel="Explain the concentration curve"
-            content="Cumulative citation share plotted against cumulative paper share. The dashed diagonal is perfect equality; the further the curve bows below it, the more concentrated your citations are."
-          />
-          <PublicationInsightsTriggerButton
-            ariaLabel="Open concentration curve insight"
-            active={openInsight === 'curve'}
-            onClick={() => toggleInsight('curve')}
-          />
-        </div>
-        <StaticPublicationInsightsOverlay
-          open={openInsight === 'curve'}
-          onClose={closeInsight}
-          title="How do I read the concentration curve?"
-          body="The curve plots the cumulative share of citations (vertical) against the cumulative share of papers (horizontal), ordered from least to most cited. The straight diagonal is perfect equality, where every paper contributes the same. The further the curve bows away from that line, the more concentrated your citations are."
-          considerationLabel="How to read it"
-          consideration="The Gini coefficient is the shaded area between the curve and the diagonal, scaled to 0–1. A value near 0 means citations are evenly distributed; values closer to 1 mean a small number of papers dominate."
-        />
-        <div className="house-drilldown-heading-block">
-          <div className="flex items-center justify-between gap-2 pr-16">
-            <p className="house-drilldown-heading-block-title">Concentration curve</p>
-            <DrilldownSheet.HeadingToggle
-              expanded={curveExpanded}
-              expandedLabel="Collapse concentration curve"
-              collapsedLabel="Expand concentration curve"
-              onClick={(event) => {
-                event.stopPropagation()
-                setCurveExpanded((value) => !value)
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-            />
-          </div>
-        </div>
-        {curveExpanded ? (
-          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <div className="space-y-3">
-              <DrilldownNarrativeCard
-                eyebrow="Approved story"
-                title={stats.giniCoefficient === null
-                  ? 'The Lorenz curve traces how citations accumulate across the portfolio.'
-                  : `A Gini of ${giniText} places this portfolio ${stats.giniCoefficient >= 0.6 ? 'toward the concentrated end' : stats.giniCoefficient >= 0.4 ? 'in the moderately concentrated range' : 'toward the evenly distributed end'} of the scale.`}
-                body="The Lorenz curve is the canonical companion to the headline percentage: it shows the full shape of the distribution rather than a single cut-off, so you can see how quickly citation share accumulates as papers are added from least to most cited."
-              />
-              <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-                <div className="space-y-1">
-                  <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Cumulative citation share</p>
-                  <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">
-                    {hasCurve
-                      ? `Curve versus the dashed line of equality. Shaded area corresponds to a Gini of ${giniText}.`
-                      : 'A concentration curve needs publication-level citation data, which is not available for this snapshot.'}
-                  </p>
-                </div>
-                <div className="min-h-[11rem]">
-                  <ImpactConcentrationLorenzPanel points={stats.lorenzPoints} />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="house-publications-drilldown-bounded-section relative">
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
-          <HelpTooltipIconButton
-            ariaLabel="Explain the concentration readout"
-            content="Canonical summary of concentration share, narrative classification, Gini dispersion and the share of papers that remain uncited."
-          />
-          <PublicationInsightsTriggerButton
-            ariaLabel="Open concentration readout insight"
-            active={openInsight === 'readout'}
-            onClick={() => toggleInsight('readout')}
-          />
-        </div>
-        <StaticPublicationInsightsOverlay
-          open={openInsight === 'readout'}
-          onClose={closeInsight}
-          title="What is in the readout?"
-          body="The readout consolidates the headline concentration share, its narrative classification, the Gini dispersion measure and the share of papers that remain uncited, so the structural picture sits in one place."
-          considerationLabel="How to use it"
-          consideration="Read concentration and Gini together with the uncited share. A concentrated portfolio with a large uncited tail behaves very differently from a concentrated one where most papers still attract some citations."
-        />
-        <div className="house-drilldown-heading-block">
-          <div className="flex items-center justify-between gap-2 pr-16">
-            <p className="house-drilldown-heading-block-title">Concentration readout</p>
-            <DrilldownSheet.HeadingToggle
-              expanded={readoutExpanded}
-              expandedLabel="Collapse concentration readout"
-              collapsedLabel="Expand concentration readout"
-              onClick={(event) => {
-                event.stopPropagation()
-                setReadoutExpanded((value) => !value)
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-            />
-          </div>
-        </div>
-        {readoutExpanded ? (
-          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <CanonicalTablePanel
-              bare
-              title="Concentration readout"
-              subtitle="Canonical summary of concentration, dispersion, and inactive-tail context."
-              columns={[
-                { key: 'measure', label: 'Measure' },
-                { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                { key: 'meaning', label: 'Interpretation' },
-              ]}
-              rows={[
-                {
-                  key: 'share',
-                  cells: {
-                    measure: `Top ${formatInt(stats.topPapersCount)} citation share`,
-                    value: formatPercentWhole(stats.concentrationPct),
-                    meaning: `Share of total lifetime citations carried by the top ${formatInt(stats.topPapersCount)} ${topPapersLabel}.`,
-                  },
-                },
-                {
-                  key: 'classification',
-                  cells: {
-                    measure: 'Classification',
-                    value: stats.classification,
-                    meaning: 'Narrative descriptor for the current concentration profile.',
-                  },
-                },
-                {
-                  key: 'gini',
-                  cells: {
-                    measure: 'Gini coefficient',
-                    value: giniText,
-                    meaning: 'Second lens on dispersion across the portfolio.',
-                  },
-                },
-                {
-                  key: 'uncited',
-                  cells: {
-                    measure: 'Uncited papers',
-                    value: `${formatInt(stats.uncitedPublicationsCount)} (${formatPercentWhole(stats.uncitedPublicationsPct)})`,
-                    meaning: 'Inactive part of the portfolio that adds breadth without adding citation volume.',
-                  },
-                },
-              ]}
-            />
-          </div>
-        ) : null}
-      </div>
-    </>
+    </div>
   )
 }
-
 function renderImpactConcentrationDrilldownSection({
   activeTab,
   stats,
@@ -31549,7 +31357,7 @@ function renderImpactConcentrationDrilldownSection({
   )
 
   if (activeTab === 'summary') {
-    return <ImpactConcentrationSummary stats={stats} tile={tile} />
+    return <ImpactConcentrationSummary stats={stats} />
   }
 
   if (activeTab === 'breakdown') {
@@ -31562,8 +31370,7 @@ function renderImpactConcentrationDrilldownSection({
           <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
             <div className="space-y-3">
               <DrilldownNarrativeCard
-                eyebrow="Approved story"
-                title="The portfolio concentration is driven by a very small citation core."
+                title="The portfolio concentration is driven by a focused citation core."
                 body="Each rung shows the cumulative share of lifetime citations captured by progressively larger slices of the portfolio, so you can see whether concentration falls away quickly after the first few papers or stays steep deeper into the list."
               />
               <CitationConcentrationLadderCard steps={concentrationLadderSteps} bare />
@@ -31578,9 +31385,8 @@ function renderImpactConcentrationDrilldownSection({
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
             <DrilldownNarrativeCard
-              eyebrow="Approved story"
               title="Concentration is explained by the top of the citation distribution."
-              body="The table below identifies the papers most responsible for the portfolio concentration profile, together with each paperâ€™s share of the total citation pool."
+              body="The table identifies the papers most responsible for the portfolio concentration profile, together with each paper's share of the total citation pool."
             />
             <CanonicalTablePanel
               title="Top concentration drivers"
@@ -31615,45 +31421,27 @@ function renderImpactConcentrationDrilldownSection({
     return (
       <div className="house-publications-drilldown-bounded-section">
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Structural trajectory context</p>
+          <p className="house-drilldown-heading-block-title">Citation distribution curve</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
             <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title="Impact concentration is currently a structural snapshot."
-              body="The canonical payload does not yet ship a historical concentration series, so the trajectory tab captures the current top-set versus long-tail split rather than a year-by-year line."
+              title={stats.giniCoefficient === null
+                ? 'The distribution view traces how citations accumulate across the portfolio.'
+                : `A Gini of ${stats.giniCoefficient.toFixed(2)} indicates a ${stats.giniCoefficient >= 0.6 ? 'highly concentrated' : stats.giniCoefficient >= 0.4 ? 'moderately concentrated' : 'more evenly distributed'} citation profile.`}
+              body="The curve shows the full citation distribution rather than a single cut-off, so standout papers and the long tail can be read together."
             />
-            <CanonicalTablePanel
-              title="Current structural split"
-              subtitle="Top-set versus long-tail citation structure used for the current concentration snapshot."
-              columns={[
-                { key: 'segment', label: 'Segment' },
-                { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
-                { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
-                { key: 'share', label: 'Share', align: 'center', width: '1%' },
-              ]}
-              rows={[
-                {
-                  key: 'top',
-                  cells: {
-                    segment: 'Top cited set',
-                    citations: formatInt(stats.top3Citations),
-                    papers: formatInt(stats.topPapersCount),
-                    share: formatPercentWhole(stats.concentrationPct),
-                  },
-                },
-                {
-                  key: 'rest',
-                  cells: {
-                    segment: 'Long tail',
-                    citations: formatInt(stats.restCitations),
-                    papers: formatInt(stats.remainingPapersCount),
-                    share: formatPercentWhole(Math.max(0, 100 - stats.concentrationPct)),
-                  },
-                },
-              ]}
-            />
+            <div className={HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
+              <div className="space-y-1">
+                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Cumulative citation share</p>
+                <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">
+                  Curve against the equality line, with the shaded gap representing citation dispersion.
+                </p>
+              </div>
+              <div className="min-h-[11rem]">
+                <ImpactConcentrationLorenzPanel points={stats.lorenzPoints} />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -31664,54 +31452,66 @@ function renderImpactConcentrationDrilldownSection({
     return (
       <div className="house-publications-drilldown-bounded-section">
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Dispersion context</p>
+          <p className="house-drilldown-heading-block-title">Concentration profile</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
             <DrilldownNarrativeCard
-              eyebrow="Approved story"
-              title="Concentration should be read together with dispersion and tail inactivity."
-              body="The headline percentage is intuitive, but it is more informative when paired with Gini-style dispersion and the share of papers that remain uncited."
+              title="The headline share should be read with the long tail and uncited base."
+              body="This profile keeps the top-set share, remaining citation volume, and uncited papers together so the concentration signal is not reduced to one percentage."
+            />
+            <CitationSplitBarCard
+              bare
+              title={`Top ${formatInt(stats.topPapersCount)} vs remaining publications`}
+              subtitle="Citation volume split behind the current concentration percentage."
+              left={{
+                label: `Top ${formatInt(stats.topPapersCount)} ${stats.topPapersCount === 1 ? 'paper' : 'papers'}`,
+                value: `${formatInt(stats.top3Citations)} citations`,
+                ratioPct: stats.concentrationPct,
+                toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+              }}
+              right={{
+                label: 'Long tail',
+                value: `${formatInt(stats.restCitations)} citations`,
+                ratioPct: Math.max(0, 100 - stats.concentrationPct),
+                toneClass: HOUSE_CHART_BAR_NEUTRAL_CLASS,
+              }}
             />
             <CanonicalTablePanel
-              title="Concentration context table"
-              subtitle="Interpretive context for the current concentration state."
+              title="Portfolio structure"
+              subtitle="Top-set, long-tail, and inactive-paper context for this snapshot."
               columns={[
-                { key: 'measure', label: 'Measure' },
-                { key: 'value', label: 'Value', align: 'center', width: '1%' },
-                { key: 'meaning', label: 'Interpretation' },
+                { key: 'segment', label: 'Segment' },
+                { key: 'papers', label: 'Papers', align: 'center', width: '1%' },
+                { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
+                { key: 'share', label: 'Share', align: 'center', width: '1%' },
               ]}
               rows={[
                 {
-                  key: 'classification',
+                  key: 'top',
                   cells: {
-                    measure: 'Profile label',
-                    value: stats.classification,
-                    meaning: 'Narrative interpretation of the current concentration level.',
+                    segment: 'Top cited set',
+                    papers: formatInt(stats.topPapersCount),
+                    citations: formatInt(stats.top3Citations),
+                    share: formatPercentWhole(stats.concentrationPct),
                   },
                 },
                 {
-                  key: 'gini',
+                  key: 'tail',
                   cells: {
-                    measure: 'Gini coefficient',
-                    value: stats.giniCoefficient === null ? '\u2014' : stats.giniCoefficient.toFixed(2),
-                    meaning: 'Dispersion across the full citation distribution.',
+                    segment: 'Remaining publications',
+                    papers: formatInt(stats.remainingPapersCount),
+                    citations: formatInt(stats.restCitations),
+                    share: formatPercentWhole(Math.max(0, 100 - stats.concentrationPct)),
                   },
                 },
                 {
                   key: 'uncited',
                   cells: {
-                    measure: 'Uncited share',
-                    value: formatPercentWhole(stats.uncitedPublicationsPct),
-                    meaning: 'Inactive tail of the publication portfolio.',
-                  },
-                },
-                {
-                  key: 'publications',
-                  cells: {
-                    measure: 'Total publications',
-                    value: formatInt(stats.totalPublications),
-                    meaning: 'Portfolio size behind the current concentration snapshot.',
+                    segment: 'Uncited publications',
+                    papers: formatInt(stats.uncitedPublicationsCount),
+                    citations: '0',
+                    share: formatPercentWhole(stats.uncitedPublicationsPct),
                   },
                 },
               ]}
@@ -32185,6 +31985,16 @@ export function PublicationsTopStrip({
       }
       return momentumTabSubtitleByTab[activeDrilldownTab] || sanitizedActiveTileDefinition
     }
+    if (activeTile?.key === 'impact_concentration') {
+      const impactConcentrationTabSubtitleByTab: Partial<Record<DrilldownTab, string>> = {
+        summary: 'Citation concentration at a glance',
+        breakdown: 'Which papers are carrying the concentration signal',
+        trajectory: 'How citations are distributed across the portfolio',
+        context: 'How the top set compares with the long tail',
+        methods: 'How impact concentration is defined',
+      }
+      return impactConcentrationTabSubtitleByTab[activeDrilldownTab] || sanitizedActiveTileDefinition
+    }
     return sanitizedActiveTileDefinition
   }, [activeDrilldownTab, activeTile?.key, sanitizedActiveTileDefinition])
 
@@ -32193,6 +32003,8 @@ export function PublicationsTopStrip({
       ? TOTAL_CITATIONS_DRILLDOWN_TABS
       : activeTile?.key === 'momentum'
         ? MOMENTUM_DRILLDOWN_TABS
+      : activeTile?.key === 'impact_concentration'
+        ? IMPACT_CONCENTRATION_DRILLDOWN_TABS
       : DRILLDOWN_TABS
   ), [activeTile?.key])
 
