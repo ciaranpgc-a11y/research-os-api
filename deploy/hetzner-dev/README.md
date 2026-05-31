@@ -33,8 +33,25 @@ The compose files in this folder are the canonical source. Keep the server copie
 
 - Windows + PowerShell 7
 - OpenSSH client (`ssh.exe` on PATH)
-- SSH key at `$env:USERPROFILE\.ssh\id_ed25519_hetzner_grobid`
+- SSH key at `$env:USERPROFILE\.ssh\id_ed25519_hetzner_grobid` (see "First-time setup on a new PC" below)
 - Node.js LTS (for the frontend dev server)
+
+## First-time setup on a new PC
+
+The SSH key and `.env` files are committed to this **private** repo so a fresh clone is self-contained. After cloning:
+
+```powershell
+# Copy SSH key into the user's .ssh folder
+Copy-Item "deploy\hetzner-dev\keys\id_ed25519_hetzner_grobid"     "$env:USERPROFILE\.ssh\"
+Copy-Item "deploy\hetzner-dev\keys\id_ed25519_hetzner_grobid.pub" "$env:USERPROFILE\.ssh\"
+
+# Tighten permissions so OpenSSH will accept it
+icacls "$env:USERPROFILE\.ssh\id_ed25519_hetzner_grobid" /inheritance:r /grant:r "$($env:USERNAME):(R)"
+```
+
+The local `.env` and `frontend/.env.local` arrive in place on `git checkout` — no further action needed for them.
+
+> NOTE: The dev *server-side* `.env` files (`/srv/dev/research-os-api/.env`, `/srv/dev/postgres/.env`) live on the Hetzner box itself and are NOT yet in this repo. Treat the server as the source of truth for those. If you need an offline copy, SSH in and `scp` them down to a secure local vault.
 
 ## Daily use
 

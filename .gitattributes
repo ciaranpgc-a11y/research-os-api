@@ -3,3 +3,9 @@
 *.yaml text eol=lf
 *.toml text eol=lf
 *.md text eol=lf
+
+# Keep SSH keys and shell-script secrets byte-exact across checkouts
+deploy/hetzner-dev/keys/** -text
+*.env text eol=lf
+.env text eol=lf
+*.env.local text eol=lf
