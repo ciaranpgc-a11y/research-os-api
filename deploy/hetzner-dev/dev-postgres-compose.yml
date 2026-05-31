@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: dev-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U research_os -d research_os_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

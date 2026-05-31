@@ -6,6 +6,10 @@ Production now runs on Hetzner with Docker Compose.
 
 The historical Render files remain in the repository only as legacy reference during the transition period. They are no longer the canonical production deployment path.
 
+## Operating the Hetzner dev server
+
+For day-to-day work against the Hetzner *dev* environment (`dev-research-os-api` on `127.0.0.1:8000`, reached over SSH tunnel from your workstation), see [`deploy/hetzner-dev/README.md`](../deploy/hetzner-dev/README.md). That folder contains the dev compose files and PowerShell helpers for opening the tunnel, restarting, tailing logs, and pulling `main` into the server.
+
 ---
 
 ## Hetzner self-hosted deployment (docker-compose)
