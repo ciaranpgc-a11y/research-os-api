@@ -26064,9 +26064,6 @@ function InfluentialTrendBarPanel({
     () => (linePoints.length ? monotonePathFromPoints(linePoints) : ''),
     [linePoints],
   )
-  const lineAreaPath = linePath && linePoints.length
-    ? `${linePath} L ${linePoints[linePoints.length - 1].x},100 L ${linePoints[0].x},100 Z`
-    : ''
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
@@ -26135,72 +26132,24 @@ function InfluentialTrendBarPanel({
           {trendMode === 'cumulative' ? (
             <div className="absolute inset-0" data-ui="influential-citations-cumulative-chart" data-house-role="chart-line">
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-                {lineAreaPath ? (
-                  <path
-                    d={lineAreaPath}
-                    fill="hsl(var(--tone-accent-400) / 0.12)"
-                    className={HOUSE_TOGGLE_CHART_MORPH_CLASS}
-                    style={{
-                      opacity: lineExpanded ? 1 : 0,
-                      transitionDuration: lineTransitionDuration,
-                    }}
-                    aria-hidden="true"
-                  />
-                ) : null}
                 <path
                   d={linePath}
                   fill="none"
-                  stroke="hsl(var(--tone-accent-500))"
-                  strokeWidth="2.8"
+                  stroke="hsl(var(--tone-accent-600) / 0.96)"
+                  strokeWidth="1.9"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                   shapeRendering="geometricPrecision"
-                  className={HOUSE_TOGGLE_CHART_MORPH_CLASS}
+                  className={HOUSE_TOGGLE_CHART_LINE_CLASS}
+                  data-expanded={lineExpanded ? 'true' : 'false'}
                   data-ui="influential-citations-cumulative-line"
                   style={{
-                    opacity: lineExpanded ? 1 : 0,
-                    transform: `scaleX(${lineExpanded ? 1 : 0})`,
-                    transformBox: 'fill-box',
-                    transformOrigin: 'left center',
-                    transitionProperty: 'opacity,transform,stroke',
+                    '--chart-path-length': 1000,
                     transitionDuration: lineTransitionDuration,
                   } as CSSProperties}
                 />
               </svg>
-              {linePoints.map((point, index) => {
-                const isActive = hoveredIndex === index
-                return (
-                  <span
-                    key={`influential-cumulative-point-${bars[index]?.key || index}`}
-                    className={cn(
-                      'absolute z-[2] h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[hsl(var(--tone-accent-500))] shadow-sm transition-[opacity,transform,filter] ease-out',
-                      lineExpanded ? 'opacity-100' : 'opacity-0',
-                      isActive && 'scale-125 brightness-[1.08] saturate-[1.14]',
-                    )}
-                    data-ui="influential-citations-cumulative-point"
-                    onMouseEnter={() => setHoveredIndex(index)}
-                    onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                    style={{
-                      left: `${point.x}%`,
-                      top: `${point.y}%`,
-                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle),
-                      transitionDuration: tileMotionEntryDuration(index, isEntryCycle),
-                    }}
-                  >
-                    <span
-                      className={cn(
-                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                        isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-                      )}
-                      style={{ bottom: `calc(100% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
-                      aria-hidden="true"
-                    >
-                      {formatInt(point.value)}
-                    </span>
-                  </span>
-                )
-              })}
             </div>
           ) : (
             <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">

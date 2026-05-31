@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
@@ -189,7 +189,7 @@ describe('Influential citations drilldown', () => {
     expect(chart?.querySelector('.house-line-chart-surface')).toBeNull()
   })
 
-  it('uses chart visual toggles for annual bars and cumulative line view', () => {
+  it('uses chart visual toggles for annual bars and cumulative line view', async () => {
     renderInfluentialCitationsDrilldown()
 
     const dialog = screen.getByRole('dialog')
@@ -208,7 +208,9 @@ describe('Influential citations drilldown', () => {
     expect(within(trendSection).getByRole('button', { name: 'Cumulative line' })).toHaveAttribute('aria-pressed', 'true')
     const cumulativeLine = trendSection.querySelector('[data-ui="influential-citations-cumulative-line"]')
     expect(cumulativeLine).not.toBeNull()
-    expect(cumulativeLine).not.toHaveClass('house-toggle-chart-line')
+    expect(cumulativeLine).toHaveClass('house-toggle-chart-line')
+    await waitFor(() => expect(cumulativeLine).toHaveAttribute('data-expanded', 'true'))
+    expect(trendSection.querySelector('[data-ui="influential-citations-cumulative-point"]')).toBeNull()
     expect(trendSection.querySelector('[data-ui="influential-citations-trend-bar"]')).toBeNull()
     expect(within(trendSection).getByText('Cumulative influential citations')).toBeInTheDocument()
     expect(within(trendSection).getByText('Total:')).toBeInTheDocument()
