@@ -160,4 +160,21 @@ describe('Impact concentration drilldown', () => {
     expect(within(dialog).queryByText('Approved story')).not.toBeInTheDocument()
     expect(within(dialog).queryByText('Concentration curve')).not.toBeInTheDocument()
   })
+
+  it('keeps the drivers tab compact and unclipped', () => {
+    renderImpactConcentrationDrilldown()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Drivers' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Top concentration drivers')).toBeInTheDocument()
+    expect(within(dialog).getByText('Top paper share')).toBeInTheDocument()
+    expect(within(dialog).getByText('Top 3 share')).toBeInTheDocument()
+    expect(within(dialog).getByText('Driver papers')).toBeInTheDocument()
+    expect(within(dialog).getByText('Leading citation paper')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Concentration ladder')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Type')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/portfolio concentration is driven/i)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/table identifies the papers/i)).not.toBeInTheDocument()
+  })
 })

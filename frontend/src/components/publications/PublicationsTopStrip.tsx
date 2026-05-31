@@ -26237,95 +26237,6 @@ function CitationAgeMixCard({
   )
 }
 
-function CitationConcentrationLadderCard({
-  steps,
-  bare = false,
-  detailMode = 'full',
-  toneMode = 'semantic',
-}: {
-  steps: CitationConcentrationLadderStep[]
-  bare?: boolean
-  detailMode?: 'full' | 'headline-only'
-  toneMode?: 'semantic' | 'ordered'
-}) {
-  const hasSteps = steps.length > 0
-  const animationKey = useMemo(
-    () => steps.map((step) => `${step.key}:${Math.round(step.citationSharePct)}`).join('|') || 'empty',
-    [steps],
-  )
-  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|citation-concentration`, hasSteps)
-
-  const toneClassForStep = (step: CitationConcentrationLadderStep, index: number) => {
-    if (toneMode === 'ordered') {
-      const orderedToneClasses = [
-        'bg-[hsl(var(--tone-accent-700))]',
-        'bg-[hsl(var(--tone-accent-600))]',
-        'bg-[hsl(var(--tone-accent-500))]',
-        'bg-[hsl(var(--tone-accent-400))]',
-        'bg-[hsl(var(--tone-accent-300))]',
-      ] as const
-      return orderedToneClasses[Math.min(index, orderedToneClasses.length - 1)]
-    }
-    if (index === 0) {
-      return HOUSE_CHART_BAR_POSITIVE_CLASS
-    }
-    if (step.label === 'Top 25%') {
-      return HOUSE_CHART_BAR_WARNING_CLASS
-    }
-    if (index === 1) {
-      return HOUSE_CHART_BAR_ACCENT_CLASS
-    }
-    return HOUSE_CHART_BAR_NEUTRAL_CLASS
-  }
-
-  return (
-    <div className={bare ? 'space-y-3' : HOUSE_METRIC_PROGRESS_PANEL_CLASS}>
-      {hasSteps ? (
-        steps.map((step, index) => (
-          <div key={step.key} className="space-y-1.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 space-y-0.5">
-                <p className="text-sm font-semibold leading-tight text-[hsl(var(--tone-neutral-800))]">{step.label}</p>
-                {detailMode === 'full' ? (
-                  <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>
-                    {`${formatInt(step.paperCount)} ${pluralize(step.paperCount, 'publication')} - ${formatPercentWhole(step.paperSharePct)} of publications`}
-                  </p>
-                ) : null}
-              </div>
-              <div className="space-y-0.5 text-right">
-                {detailMode === 'headline-only' ? (
-                  <p className="text-sm font-semibold leading-tight text-[hsl(var(--tone-neutral-800))]">
-                    {`${formatPercentWhole(step.citationSharePct)} of all citations (${formatInt(step.citationCount)})`}
-                  </p>
-                ) : (
-                  <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'tabular-nums')}>
-                    {formatPercentWhole(step.citationSharePct)}
-                  </p>
-                )}
-                {detailMode === 'headline-only' ? null : (
-                  <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'leading-tight')}>{`${formatInt(step.citationCount)} citations`}</p>
-                )}
-              </div>
-            </div>
-            <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.72rem]')}>
-              <div
-                className={cn('h-full rounded-full house-progress-fill-motion', toneClassForStep(step, index))}
-                style={{
-                  width: `${barsExpanded ? Math.max(0, Math.min(100, step.citationSharePct)) : 0}%`,
-                  transitionDuration: 'var(--motion-duration-chart-toggle)',
-                }}
-                aria-hidden="true"
-              />
-            </div>
-          </div>
-        ))
-      ) : (
-        <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">No citation concentration data is available yet.</p>
-      )}
-    </div>
-  )
-}
-
 function CitationConcentrationRingList({
   steps,
   bare = false,
@@ -31283,7 +31194,7 @@ function renderEnhancedGenericMetricDrilldownSection({
         })
         : null
     case 'impact_concentration':
-      return impactStats ? renderImpactConcentrationDrilldownSection({ tile, activeTab, stats: impactStats }) : null
+      return impactStats ? renderImpactConcentrationDrilldownSection({ activeTab, stats: impactStats }) : null
     case 'influential_citations':
       return influentialStats ? renderInfluentialCitationsDrilldownSection({ tile, activeTab, stats: influentialStats }) : null
     case 'field_percentile_share':
@@ -31382,20 +31293,34 @@ function ImpactConcentrationSummary({
 function renderImpactConcentrationDrilldownSection({
   activeTab,
   stats,
-  tile,
 }: {
   activeTab: DrilldownTab
   stats: ImpactConcentrationDrilldownStats
-  tile: PublicationMetricTilePayload
 }): ReactNode {
-  const concentrationLadderSteps = buildCitationConcentrationLadder(
-    (Array.isArray((tile.drilldown as Record<string, unknown> | undefined)?.publications)
-      ? (tile.drilldown as Record<string, unknown>).publications as Array<Record<string, unknown>>
-      : []
-    ).map((publication) => parsePublicationCitationCount(
-      publication.citations_lifetime ?? publication.citations ?? publication.cited_by_count ?? 0,
-    )),
-  )
+  const topDriver = stats.topPapers[0] || null
+  const restSharePct = Math.max(0, 100 - stats.concentrationPct)
+  const driverMetricTiles = [
+    {
+      label: 'Top paper share',
+      value: topDriver ? formatPercentOne(topDriver.shareOfTotalPct) : '\u2014',
+      secondary: topDriver ? `${formatInt(topDriver.citations)} citations` : 'No driver paper',
+    },
+    {
+      label: `Top ${formatInt(stats.topPapersCount)} share`,
+      value: formatPercentWhole(stats.concentrationPct),
+      secondary: `${formatInt(stats.top3Citations)} citations`,
+    },
+    {
+      label: 'Long-tail share',
+      value: formatPercentWhole(restSharePct),
+      secondary: `${formatInt(stats.restCitations)} citations`,
+    },
+    {
+      label: 'Papers listed',
+      value: formatInt(stats.topPapers.length),
+      secondary: 'Rows shown',
+    },
+  ]
 
   if (activeTab === 'summary') {
     return <ImpactConcentrationSummary stats={stats} />
@@ -31403,41 +31328,36 @@ function renderImpactConcentrationDrilldownSection({
 
   if (activeTab === 'breakdown') {
     return (
-      <>
-        <div className="house-publications-drilldown-bounded-section">
-          <div className="house-drilldown-heading-block">
-            <p className="house-drilldown-heading-block-title">Concentration ladder</p>
-          </div>
-          <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <div className="space-y-3">
-              <DrilldownNarrativeCard
-                title="The portfolio concentration is driven by a focused citation core."
-                body="Each rung shows the cumulative share of lifetime citations captured by progressively larger slices of the portfolio, so you can see whether concentration falls away quickly after the first few papers or stays steep deeper into the list."
-              />
-              <CitationConcentrationLadderCard steps={concentrationLadderSteps} bare />
-            </div>
-          </div>
-        </div>
-
       <div className="house-publications-drilldown-bounded-section">
         <div className="house-drilldown-heading-block">
-          <p className="house-drilldown-heading-block-title">Top cited papers</p>
+          <p className="house-drilldown-heading-block-title">Top concentration drivers</p>
         </div>
         <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
           <div className="space-y-3">
-            <DrilldownNarrativeCard
-              title="Concentration is explained by the top of the citation distribution."
-              body="The table identifies the papers most responsible for the portfolio concentration profile, together with each paper's share of the total citation pool."
-            />
+            <div
+              className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+            >
+              {driverMetricTiles.map((metricTile) => (
+                <div key={metricTile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{metricTile.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{metricTile.value}</p>
+                  </div>
+                  <p className="text-xs leading-5 text-[hsl(var(--tone-neutral-600))]">{metricTile.secondary}</p>
+                </div>
+              ))}
+            </div>
             <CanonicalTablePanel
-              title="Top concentration drivers"
-              subtitle="Highest-cited papers and their share of the total citation portfolio."
+              bare
+              variant="drilldown"
+              suppressTopRowHighlight
+              title="Driver papers"
               columns={[
-                { key: 'paper', label: 'Paper' },
+                { key: 'paper', label: 'Paper', wrap: true },
                 { key: 'citations', label: 'Citations', align: 'center', width: '1%' },
                 { key: 'share', label: 'Share', align: 'center', width: '1%' },
                 { key: 'year', label: 'Year', align: 'center', width: '1%' },
-                { key: 'type', label: 'Type' },
               ]}
               rows={stats.topPapers.map((publication) => ({
                 key: publication.workId,
@@ -31446,7 +31366,6 @@ function renderImpactConcentrationDrilldownSection({
                   citations: formatInt(publication.citations),
                   share: formatPercentOne(publication.shareOfTotalPct),
                   year: publication.year === null ? '\u2014' : formatInt(publication.year),
-                  type: publication.publicationType,
                 },
               }))}
               emptyMessage="No concentration driver papers available."
@@ -31454,7 +31373,6 @@ function renderImpactConcentrationDrilldownSection({
           </div>
         </div>
       </div>
-      </>
     )
   }
 
