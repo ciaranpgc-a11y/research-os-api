@@ -7351,6 +7351,7 @@ function PublicationTrendsVisualToggle({
             key={mode}
             type="button"
             data-stop-tile-open="true"
+            aria-label={mode === 'bars' ? 'Bar chart' : mode === 'line' ? 'Line chart' : 'Table view'}
             className={cn(
               HOUSE_TOGGLE_BUTTON_CLASS,
               'relative z-[1] inline-flex min-w-0 items-center justify-center px-1.5',
@@ -16206,6 +16207,7 @@ function PublicationWindowToggle<TValue extends string | number>({
       <div
         className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, gridColsClass)}
         data-stop-tile-open="true"
+        data-ui="publications-window-toggle"
         style={{ width: toggleWidth, minWidth: toggleWidth, maxWidth: toggleWidth }}
       >
         <span
@@ -21088,7 +21090,8 @@ function GenericMetricDrilldownWorkspace({
   const [momentumTrajectoryViewMode, setMomentumTrajectoryViewMode] = useState<MomentumTrajectoryViewMode>('pace')
   const [momentumBreakdownBucket, setMomentumBreakdownBucket] = useState<MomentumBreakdownBucketKey>('new')
   const [momentumOverviewViewMode, setMomentumOverviewViewMode] = useState<SplitBreakdownViewMode>('bar')
-  const [influentialTrendMode, setInfluentialTrendMode] = useState<InfluentialTrendMode>('annual')
+  const [influentialTrendWindowMode, setInfluentialTrendWindowMode] = useState<PublicationsWindowMode>('all')
+  const [influentialTrendVisualMode, setInfluentialTrendVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const [fieldPercentileDrilldownThreshold, setFieldPercentileDrilldownThreshold] = useState<FieldPercentileThreshold>(75)
   const [uncitedBreakdownViewMode, setUncitedBreakdownViewMode] = useState<SplitBreakdownViewMode>('bar')
   const [recentConcentrationViewMode, setRecentConcentrationViewMode] = useState<SplitBreakdownViewMode>('bar')
@@ -21142,7 +21145,8 @@ function GenericMetricDrilldownWorkspace({
     setCitationMomentumExpanded(true)
     setCitationMomentumViewMode('sleeping')
     setMomentumBreakdownBucket('new')
-    setInfluentialTrendMode('annual')
+    setInfluentialTrendWindowMode('all')
+    setInfluentialTrendVisualMode('bars')
     setUncitedBreakdownViewMode('bar')
     setRecentConcentrationViewMode('bar')
     setCitationActivationViewMode('bar')
@@ -24900,8 +24904,10 @@ function GenericMetricDrilldownWorkspace({
             onMomentumOverviewViewModeChange: setMomentumOverviewViewMode,
             impactStats: impactConcentrationDrilldownStats,
             influentialStats: influentialCitationsDrilldownStats,
-            influentialTrendMode,
-            onInfluentialTrendModeChange: setInfluentialTrendMode,
+            influentialTrendWindowMode,
+            onInfluentialTrendWindowModeChange: setInfluentialTrendWindowMode,
+            influentialTrendVisualMode,
+            onInfluentialTrendVisualModeChange: setInfluentialTrendVisualMode,
             fieldPercentileStats: fieldPercentileDrilldownStats,
             authorshipStats: authorshipCompositionDrilldownStats,
             collaborationStats: collaborationStructureDrilldownStats,
@@ -25885,6 +25891,49 @@ function buildInfluentialTrendBars(
   }))
 }
 
+function parseInfluentialTrendYear(label: string, index: number, total: number): number {
+  const normalized = String(label || '').trim()
+  const fullYear = normalized.match(/\b((19|20)\d{2})\b/)
+  if (fullYear) {
+    return Number(fullYear[1])
+  }
+  const shortYear = normalized.match(/^\d{2}$/)
+  if (shortYear) {
+    const nowYear = new Date().getUTCFullYear()
+    const currentCentury = Math.floor(nowYear / 100) * 100
+    const candidate = currentCentury + Number(shortYear[0])
+    return candidate > nowYear + 5 ? candidate - 100 : candidate
+  }
+  return new Date().getUTCFullYear() - Math.max(0, total - index - 1)
+}
+
+function buildInfluentialTrendChartTile(tile: PublicationMetricTilePayload): PublicationMetricTilePayload {
+  const series = buildInfluentialTrendSeries(tile)
+  const years = series.map((point, index) => parseInfluentialTrendYear(point.axisSubLabel || point.axisLabel, index, series.length))
+  const values = series.map((point) => Math.max(0, point.annualValue))
+  const finalYear = years[years.length - 1] ?? new Date().getUTCFullYear()
+  const finalValue = values[values.length - 1] ?? 0
+  const meanValue = values.length
+    ? values.reduce((sum, value) => sum + Math.max(0, value), 0) / values.length
+    : 0
+
+  return {
+    ...tile,
+    id: `${tile.id || tile.key}-influential-trend`,
+    key: `${tile.key}_trend`,
+    chart_type: 'bar',
+    chart_data: {
+      ...(tile.chart_data || {}),
+      years,
+      values,
+      projected_year: finalYear,
+      current_year_ytd: finalValue,
+      mean_value: meanValue,
+    },
+    sparkline: values,
+  }
+}
+
 type InfluentialTrendPanelProps = {
   tile: PublicationMetricTilePayload
   chartTitle?: string
@@ -25893,80 +25942,6 @@ type InfluentialTrendPanelProps = {
   trendMode?: InfluentialTrendMode
   showAxes?: boolean
   showMeanLine?: boolean
-}
-
-function InfluentialTrendVisualToggle({
-  value,
-  onChange,
-}: {
-  value: InfluentialTrendMode
-  onChange: (mode: InfluentialTrendMode) => void
-}) {
-  return (
-    <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-      <div
-        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'overflow-hidden')}
-        data-stop-tile-open="true"
-        data-ui="influential-citations-trend-visual-toggle"
-        data-house-role="chart-toggle"
-        style={{ width: '5.35rem', gridTemplateColumns: '1fr 1fr' }}
-      >
-        {([
-          { value: 'annual', label: 'Annual bars' },
-          { value: 'cumulative', label: 'Cumulative line' },
-        ] as const).map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            data-stop-tile-open="true"
-            aria-label={option.label}
-            className={cn(
-              HOUSE_TOGGLE_BUTTON_CLASS,
-              'relative z-[1] inline-flex min-w-0 items-center justify-center px-1.5',
-              option.value === 'annual' ? '!rounded-l-full !rounded-r-none' : '!rounded-l-none !rounded-r-full',
-              value === option.value
-                ? 'bg-foreground text-background shadow-sm'
-                : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-            )}
-            onClick={(event) => {
-              event.stopPropagation()
-              if (value === option.value) {
-                return
-              }
-              onChange(option.value)
-            }}
-            onMouseDown={(event) => event.stopPropagation()}
-            aria-pressed={value === option.value}
-          >
-            {option.value === 'annual' ? (
-              <svg viewBox="0 0 16 16" aria-hidden="true" className={cn(HOUSE_TOGGLE_CHART_BAR_CLASS, 'h-3.5 w-3.5 fill-current')}>
-                <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
-                <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
-                <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
-                <polyline
-                  points="2,11 6,8 9,9 14,4"
-                  fill="none"
-                  className="house-toggle-chart-line"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  data-expanded="true"
-                />
-                <circle cx="2" cy="11" r="1.1" fill="currentColor" />
-                <circle cx="6" cy="8" r="1.1" fill="currentColor" />
-                <circle cx="9" cy="9" r="1.1" fill="currentColor" />
-                <circle cx="14" cy="4" r="1.1" fill="currentColor" />
-              </svg>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 function InfluentialTrendBarPanel({
@@ -31719,8 +31694,10 @@ function renderEnhancedGenericMetricDrilldownSection({
   onMomentumOverviewViewModeChange,
   impactStats,
   influentialStats,
-  influentialTrendMode,
-  onInfluentialTrendModeChange,
+  influentialTrendWindowMode,
+  onInfluentialTrendWindowModeChange,
+  influentialTrendVisualMode,
+  onInfluentialTrendVisualModeChange,
   fieldPercentileStats,
   authorshipStats,
   collaborationStats,
@@ -31745,8 +31722,10 @@ function renderEnhancedGenericMetricDrilldownSection({
   onMomentumOverviewViewModeChange: (next: SplitBreakdownViewMode) => void
   impactStats: ImpactConcentrationDrilldownStats | null
   influentialStats: InfluentialCitationsDrilldownStats | null
-  influentialTrendMode: InfluentialTrendMode
-  onInfluentialTrendModeChange: (next: InfluentialTrendMode) => void
+  influentialTrendWindowMode: PublicationsWindowMode
+  onInfluentialTrendWindowModeChange: (next: PublicationsWindowMode) => void
+  influentialTrendVisualMode: PublicationTrendsVisualMode
+  onInfluentialTrendVisualModeChange: (next: PublicationTrendsVisualMode) => void
   fieldPercentileStats: FieldPercentileShareDrilldownStats | null
   authorshipStats: AuthorshipCompositionDrilldownStats | null
   collaborationStats: CollaborationStructureDrilldownStats | null
@@ -31783,8 +31762,10 @@ function renderEnhancedGenericMetricDrilldownSection({
         tile,
         activeTab,
         stats: influentialStats,
-        trendMode: influentialTrendMode,
-        onTrendModeChange: onInfluentialTrendModeChange,
+        trendWindowMode: influentialTrendWindowMode,
+        onTrendWindowModeChange: onInfluentialTrendWindowModeChange,
+        trendVisualMode: influentialTrendVisualMode,
+        onTrendVisualModeChange: onInfluentialTrendVisualModeChange,
       }) : null
     case 'field_percentile_share':
       return fieldPercentileStats
@@ -31960,16 +31941,22 @@ function renderInfluentialCitationsDrilldownSection({
   tile,
   activeTab,
   stats,
-  trendMode,
-  onTrendModeChange,
+  trendWindowMode,
+  onTrendWindowModeChange,
+  trendVisualMode,
+  onTrendVisualModeChange,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
   stats: InfluentialCitationsDrilldownStats
-  trendMode: InfluentialTrendMode
-  onTrendModeChange: (next: InfluentialTrendMode) => void
+  trendWindowMode: PublicationsWindowMode
+  onTrendWindowModeChange: (next: PublicationsWindowMode) => void
+  trendVisualMode: PublicationTrendsVisualMode
+  onTrendVisualModeChange: (next: PublicationTrendsVisualMode) => void
 }): ReactNode {
   if (activeTab === 'summary') {
+    const influentialTrendTile = buildInfluentialTrendChartTile(tile)
+    const influentialTrendTableRows = buildCitationVolumeTableRows(influentialTrendTile, trendWindowMode)
     const headlineMetrics = [
       {
         label: 'Total influential',
@@ -32022,20 +32009,85 @@ function renderInfluentialCitationsDrilldownSection({
             <p className="house-drilldown-heading-block-title">Influential citations over time</p>
           </div>
           <div className="house-drilldown-content-block house-drilldown-heading-content-block w-full">
-            <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-end')}>
+            <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'house-publications-trends-controls-row justify-between')}>
+              <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                <PublicationWindowToggle value={trendWindowMode} onChange={onTrendWindowModeChange} />
+              </div>
               <div className="flex items-center">
-                <InfluentialTrendVisualToggle value={trendMode} onChange={onTrendModeChange} />
+                <PublicationTrendsVisualToggle
+                  value={trendVisualMode}
+                  onChange={onTrendVisualModeChange}
+                />
               </div>
             </div>
-            <div className="house-drilldown-content-block w-full house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall">
-              <InfluentialTrendPanel
-                tile={tile}
-                chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
-                variant="bars"
-                trendMode={trendMode}
-                showAxes
-                showMeanLine
-              />
+            <div
+              className={cn(
+                'house-drilldown-content-block w-full',
+                trendVisualMode === 'table'
+                  ? 'h-auto'
+                  : 'house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall',
+              )}
+            >
+              {trendVisualMode === 'table' ? (
+                <CanonicalTablePanel
+                  bare
+                  variant="drilldown"
+                  suppressTopRowHighlight
+                  columns={[
+                    {
+                      key: 'period',
+                      label: trendWindowMode === '1y' ? 'Month year' : 'Year',
+                      align: 'center',
+                      width: '1%',
+                    },
+                    { key: 'citations', label: 'Influential', align: 'center', width: '1%' },
+                    { key: 'change', label: 'Change', align: 'center', width: '1%' },
+                  ]}
+                  rows={influentialTrendTableRows.map((row) => ({
+                    key: row.key,
+                    cells: {
+                      period: row.projected ? (
+                        <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
+                          {row.periodLabel}
+                        </span>
+                      ) : row.periodLabel,
+                      citations: row.projected ? (
+                        <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
+                          {row.citations}
+                        </span>
+                      ) : row.citations,
+                      change: row.projected ? (
+                        <span className="inline-flex w-full items-center justify-center rounded-md border border-dashed border-[hsl(var(--stroke-soft)/0.92)] px-2 py-1 text-[hsl(var(--tone-neutral-800))]">
+                          {row.change}
+                        </span>
+                      ) : row.change,
+                    },
+                  }))}
+                  emptyMessage="No influential citation counts found in the selected period."
+                />
+              ) : (
+                <PublicationsPerYearChart
+                  tile={influentialTrendTile}
+                  animate
+                  showAxes
+                  yAxisLabel={trendVisualMode === 'line' ? 'Influential citations' : 'Influential citations (per year)'}
+                  xAxisLabel="Year"
+                  enableWindowToggle
+                  showPeriodHint
+                  showCurrentPeriodSemantic
+                  autoScaleByWindow
+                  showMeanLine
+                  showMeanValueLabel
+                  roundMeanValueInLongWindows
+                  longWindowLineXAxisTitleTranslateRem={1.1}
+                  subtleGrid
+                  activeWindowMode={trendWindowMode}
+                  onWindowModeChange={onTrendWindowModeChange}
+                  visualMode={trendVisualMode}
+                  onVisualModeChange={onTrendVisualModeChange}
+                  showWindowToggle={false}
+                />
+              )}
             </div>
           </div>
         </div>

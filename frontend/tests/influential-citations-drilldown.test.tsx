@@ -180,40 +180,38 @@ describe('Influential citations drilldown', () => {
     renderInfluentialCitationsDrilldown()
 
     const dialog = screen.getByRole('dialog')
-    const chart = dialog.querySelector('[data-ui="influential-citations-trend-chart"]')
+    const chart = dialog.querySelector('[data-ui="publications-per-year-chart"]')
     expect(chart).not.toBeNull()
-    expect(chart?.querySelectorAll('[data-ui="influential-citations-trend-bar"]').length).toBeGreaterThan(0)
-    expect(within(chart as HTMLElement).getByText('Mean:')).toBeInTheDocument()
-    expect(within(chart as HTMLElement).getByText('Influential citations')).toBeInTheDocument()
+    expect(dialog.querySelector('[data-ui="publications-window-toggle"]')).not.toBeNull()
+    expect(dialog.querySelector('[data-ui="publications-trends-visual-toggle"]')).not.toBeNull()
+    expect(chart?.querySelectorAll('[data-ui="influential-citations-trend-bar"]').length).toBe(0)
+    expect(within(chart as HTMLElement).getByText(/Mean:/)).toBeInTheDocument()
+    expect(within(chart as HTMLElement).getByText(/Influential citations/i)).toBeInTheDocument()
     expect(within(chart as HTMLElement).getByText('Year')).toBeInTheDocument()
     expect(chart?.querySelector('.house-line-chart-surface')).toBeNull()
   })
 
-  it('uses chart visual toggles for annual bars and cumulative line view', async () => {
+  it('uses the shared chart visual toggle for bars and cumulative line view', async () => {
     renderInfluentialCitationsDrilldown()
 
     const dialog = screen.getByRole('dialog')
     const trendSection = dialog.querySelector('[data-ui="influential-citations-trend-section"]') as HTMLElement
     expect(trendSection).not.toBeNull()
 
-    const toggle = trendSection.querySelector('[data-ui="influential-citations-trend-visual-toggle"]')
+    const toggle = trendSection.querySelector('[data-ui="publications-trends-visual-toggle"]')
     expect(toggle).not.toBeNull()
-    expect(within(trendSection).getByRole('button', { name: 'Annual bars' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(trendSection).getByRole('button', { name: 'Cumulative line' })).toHaveAttribute('aria-pressed', 'false')
-    expect(trendSection.querySelectorAll('[data-ui="influential-citations-trend-bar"]').length).toBeGreaterThan(0)
+    expect(within(trendSection).getByRole('button', { name: 'Bar chart' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(trendSection).getByRole('button', { name: 'Line chart' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(trendSection).getByRole('button', { name: 'Table view' })).toHaveAttribute('aria-pressed', 'false')
 
-    fireEvent.click(within(trendSection).getByRole('button', { name: 'Cumulative line' }))
+    fireEvent.click(within(trendSection).getByRole('button', { name: 'Line chart' }))
 
-    expect(within(trendSection).getByRole('button', { name: 'Annual bars' })).toHaveAttribute('aria-pressed', 'false')
-    expect(within(trendSection).getByRole('button', { name: 'Cumulative line' })).toHaveAttribute('aria-pressed', 'true')
-    const cumulativeLine = trendSection.querySelector('[data-ui="influential-citations-cumulative-line"]')
-    expect(cumulativeLine).not.toBeNull()
-    expect(cumulativeLine).toHaveClass('house-toggle-chart-line')
-    await waitFor(() => expect(cumulativeLine).toHaveAttribute('data-expanded', 'true'))
+    expect(within(trendSection).getByRole('button', { name: 'Bar chart' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(trendSection).getByRole('button', { name: 'Line chart' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(trendSection.querySelector('.house-toggle-chart-line')).not.toBeNull())
+    expect(trendSection.querySelector('[data-ui="influential-citations-cumulative-line"]')).toBeNull()
     expect(trendSection.querySelector('[data-ui="influential-citations-cumulative-point"]')).toBeNull()
     expect(trendSection.querySelector('[data-ui="influential-citations-trend-bar"]')).toBeNull()
-    expect(within(trendSection).getByText('Cumulative influential citations')).toBeInTheDocument()
-    expect(within(trendSection).getByText('Total:')).toBeInTheDocument()
   })
 
   it('keeps drivers focused on paper-level evidence', () => {
