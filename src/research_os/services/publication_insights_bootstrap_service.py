@@ -365,7 +365,7 @@ def _fetch_openalex_works_for_author(
             "filter": f"author.id:{openalex_author_id}",
             "select": (
                 "id,display_name,publication_year,type,doi,ids,primary_location,"
-                "authorships,abstract_inverted_index"
+                "authorships,abstract_inverted_index,cited_by_count"
             ),
             "per-page": 200,
             "sort": "publication_date:desc",
@@ -806,7 +806,6 @@ def import_openalex_works_direct(
     seen_upserted_ids: set[str] = set()
     new_work_ids: list[str] = []
     seen_new_work_ids: set[str] = set()
-    new_works_count = 0
     with session_scope() as session:
         user = session.get(User, user_id)
         if not user:
@@ -820,10 +819,6 @@ def import_openalex_works_direct(
                 select(Work.id).where(Work.user_id == user_id)
             ).all()
         }
-        baseline_works_count = (
-            session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
-            or 0
-        )
 
         for work in imported:
             record = _upsert_imported_orcid_work(
@@ -844,11 +839,6 @@ def import_openalex_works_direct(
                 seen_new_work_ids.add(work_id)
                 new_work_ids.append(work_id)
 
-        current_works_count = (
-            session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
-            or 0
-        )
-        new_works_count = max(0, int(current_works_count) - int(baseline_works_count))
         user.openalex_author_id = author_id
         user.orcid_last_synced_at = _utcnow()
         session.flush()

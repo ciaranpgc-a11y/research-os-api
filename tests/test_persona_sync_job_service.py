@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from datetime import timedelta
 
 import pytest
 
-from research_os.db import User, create_all_tables, reset_database_state, session_scope
+from research_os.db import (
+    PersonaSyncJob,
+    User,
+    create_all_tables,
+    reset_database_state,
+    session_scope,
+)
 import research_os.services.persona_sync_job_service as job_service
 from research_os.services.persona_sync_job_service import (
     PersonaSyncJobConflictError,
@@ -101,3 +108,46 @@ def test_enqueue_persona_sync_job_conflicts_when_active_job_exists(
             job_type="orcid_import",
             providers=["openalex"],
         )
+
+
+def test_enqueue_persona_sync_job_expires_stale_running_job(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("PERSONA_SYNC_JOB_STALE_AFTER_SECONDS", "60")
+    user_id = _seed_user()
+    started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+    with session_scope() as session:
+        stale_job = PersonaSyncJob(
+            user_id=user_id,
+            job_type="openalex_import",
+            status="running",
+            providers=["openalex"],
+            progress_percent=25,
+            current_stage="importing_openalex",
+            started_at=started_at,
+            updated_at=started_at,
+        )
+        session.add(stale_job)
+        session.flush()
+        stale_job_id = str(stale_job.id)
+
+    monkeypatch.setattr(
+        "research_os.services.persona_sync_job_service._start_persona_sync_thread",
+        lambda job_id: None,
+    )
+
+    job = enqueue_persona_sync_job(
+        user_id=user_id,
+        job_type="metrics_sync",
+        providers=["openalex"],
+    )
+
+    assert str(job.id) != stale_job_id
+    with session_scope() as session:
+        stale = session.get(PersonaSyncJob, stale_job_id)
+        assert stale is not None
+        assert stale.status == "failed"
+        assert stale.error_detail == "Job expired after appearing stuck."
+        assert stale.completed_at is not None

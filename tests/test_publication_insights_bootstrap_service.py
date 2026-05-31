@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from research_os.db import User, create_all_tables, reset_database_state, session_scope
 from research_os.services.publication_insights_bootstrap_service import (
+    _fetch_openalex_works_for_author,
     import_openalex_works_direct,
 )
 
@@ -72,3 +73,27 @@ def test_import_openalex_works_direct_uses_local_transformers(
         row = session.scalar(select(User).where(User.id == user_id))
         assert row is not None
         assert str(row.openalex_author_id or "") == "A1234567890"
+
+
+def test_openalex_author_fetch_requests_citation_counts(monkeypatch) -> None:
+    captured_params: list[dict[str, object]] = []
+
+    def _capture_request(*, url: str, params: dict[str, object]) -> dict[str, object]:
+        assert url == "https://api.openalex.org/works"
+        captured_params.append(dict(params))
+        return {"results": [], "meta": {"next_cursor": ""}}
+
+    monkeypatch.setattr(
+        "research_os.services.publication_insights_bootstrap_service._openalex_request_with_retry",
+        _capture_request,
+    )
+
+    _fetch_openalex_works_for_author(
+        openalex_author_id="A1234567890",
+        mailto="researcher@example.com",
+        max_works=10,
+    )
+
+    assert captured_params
+    selected_fields = str(captured_params[0]["select"]).split(",")
+    assert "cited_by_count" in selected_fields

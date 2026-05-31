@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -35,6 +35,7 @@ class PersonaSyncJobValidationError(RuntimeError):
 _ACTIVE_STATUSES = ("queued", "running")
 _ALLOWED_JOB_TYPES = {"orcid_import", "openalex_import", "metrics_sync", "analytics_refresh"}
 _ALLOWED_PROVIDERS = {"openalex", "semantic_scholar", "manual"}
+_DEFAULT_STALE_JOB_AFTER_SECONDS = 6 * 60 * 60
 
 
 def _utcnow() -> datetime:
@@ -83,6 +84,20 @@ def _orcid_import_always_sync_metrics() -> bool:
 
 def _orcid_import_default_providers() -> list[str]:
     return ["openalex", "semantic_scholar"]
+
+
+def _stale_job_after_seconds() -> int:
+    raw = str(
+        os.getenv(
+            "PERSONA_SYNC_JOB_STALE_AFTER_SECONDS",
+            str(_DEFAULT_STALE_JOB_AFTER_SECONDS),
+        )
+    ).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEFAULT_STALE_JOB_AFTER_SECONDS
+    return max(0, value)
 
 
 def _json_safe(value: Any) -> Any:
@@ -139,6 +154,28 @@ def _mark_job_failed(job: PersonaSyncJob, detail: str) -> None:
 def _set_stage(job: PersonaSyncJob, *, stage: str, progress: int) -> None:
     job.current_stage = stage
     job.progress_percent = max(0, min(100, int(progress)))
+
+
+def _expire_stale_active_jobs(session, *, user_id: str) -> None:  # noqa: ANN001
+    stale_after_seconds = _stale_job_after_seconds()
+    if stale_after_seconds <= 0:
+        return
+    cutoff = _utcnow() - timedelta(seconds=stale_after_seconds)
+    jobs = session.scalars(
+        select(PersonaSyncJob).where(
+            PersonaSyncJob.user_id == user_id,
+            PersonaSyncJob.status.in_(_ACTIVE_STATUSES),
+        )
+    ).all()
+    for job in jobs:
+        last_seen = (
+            _coerce_utc(job.updated_at)
+            or _coerce_utc(job.started_at)
+            or _coerce_utc(job.created_at)
+        )
+        if last_seen is None or last_seen > cutoff:
+            continue
+        _mark_job_failed(job, "Job expired after appearing stuck.")
 
 
 def _run_persona_sync_job(job_id: str) -> None:
@@ -338,6 +375,8 @@ def enqueue_persona_sync_job(
     session = SessionLocal()
     try:
         _resolve_user_or_raise(session, user_id)
+        _expire_stale_active_jobs(session, user_id=user_id)
+        session.flush()
         active = session.scalars(
             select(PersonaSyncJob).where(
                 PersonaSyncJob.user_id == user_id,
