@@ -158,6 +158,19 @@ describe('Influential citations drilldown', () => {
     expect(within(dialog).queryByText(/quality-of-impact rather than raw volume/i)).not.toBeInTheDocument()
   })
 
+  it('renders the summary trend as a proper axis-based bar chart', () => {
+    renderInfluentialCitationsDrilldown()
+
+    const dialog = screen.getByRole('dialog')
+    const chart = dialog.querySelector('[data-ui="influential-citations-trend-chart"]')
+    expect(chart).not.toBeNull()
+    expect(chart?.querySelectorAll('[data-ui="influential-citations-trend-bar"]').length).toBeGreaterThan(0)
+    expect(within(chart as HTMLElement).getByText('Mean:')).toBeInTheDocument()
+    expect(within(chart as HTMLElement).getByText('Influential citations')).toBeInTheDocument()
+    expect(within(chart as HTMLElement).getByText('Year')).toBeInTheDocument()
+    expect(chart?.querySelector('.house-line-chart-surface')).toBeNull()
+  })
+
   it('keeps drivers focused on paper-level evidence', () => {
     renderInfluentialCitationsDrilldown()
 
